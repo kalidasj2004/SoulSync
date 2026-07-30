@@ -18,21 +18,7 @@ export default function RegisterScreen() {
   const { language } = useContext(AppContext);
   const supabase = getSupabase();
 
-  // Intercept web registrations and redirect to the new Web Auth Portal
-  useEffect(() => {
-    if (Platform.OS === 'web') {
-      window.location.href = 'http://localhost:5173/';
-    }
-  }, []);
 
-  if (Platform.OS === 'web') {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: THEME.colors.background }}>
-        <ActivityIndicator size="large" color={THEME.colors.primary} />
-        <Text style={{ color: THEME.colors.textSecondary, marginTop: 12 }}>Redirecting to secure login portal...</Text>
-      </View>
-    );
-  }
 
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -185,6 +171,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: THEME.sizes.md,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   avatarContainer: {
     alignItems: 'center',
@@ -203,7 +190,16 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   formCard: {
+    width: '100%',
+    maxWidth: 450,
     padding: THEME.sizes.lg,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    shadowColor: '#FF8A3D',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 6,
   },
   formTitle: {
     fontSize: 20,

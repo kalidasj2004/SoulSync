@@ -42,11 +42,11 @@ export default function AuthCard({ darkMode, onToggleDarkMode }) {
         setAuthState('idle');
         setStatusMessage(null);
         if (session) {
-          window.location.href = `http://localhost:8081/#access_token=${session.access_token}&refresh_token=${session.refresh_token}`;
+          window.location.href = `http://127.0.0.1:3000/#access_token=${session.access_token}&refresh_token=${session.refresh_token}`;
         } else {
-          window.location.href = 'http://localhost:8081';
+          window.location.href = 'http://127.0.0.1:3000';
         }
-      }, 2000);
+      }, 1500);
     } else {
       if (!session) {
         // Email confirmation is required in Supabase dashboard
@@ -64,8 +64,8 @@ export default function AuthCard({ darkMode, onToggleDarkMode }) {
         setTimeout(() => {
           setAuthState('idle');
           setStatusMessage(null);
-          window.location.href = `http://localhost:8081/#access_token=${session.access_token}&refresh_token=${session.refresh_token}`;
-        }, 3000);
+          window.location.href = `http://127.0.0.1:3000/#access_token=${session.access_token}&refresh_token=${session.refresh_token}`;
+        }, 2000);
       }
     }
   };

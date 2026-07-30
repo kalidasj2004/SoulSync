@@ -16,23 +16,13 @@ import CompanionAvatar from '../../components/CompanionAvatar';
 export default function LoginScreen() {
   const navigation = useNavigation();
   const { language, refreshAppKeys, appKeysSource } = useContext(AppContext);
-  const supabase = getSupabase();
-
-  // Intercept web logins and redirect to the new Web Auth Portal
   useEffect(() => {
-    if (Platform.OS === 'web') {
-      window.location.href = 'http://localhost:5173/';
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.location.href = 'http://127.0.0.1:5173/';
     }
   }, []);
 
-  if (Platform.OS === 'web') {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: THEME.colors.background }}>
-        <ActivityIndicator size="large" color={THEME.colors.primary} />
-        <Text style={{ color: THEME.colors.textSecondary, marginTop: 12 }}>Redirecting to secure login portal...</Text>
-      </View>
-    );
-  }
+
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -255,10 +245,11 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: THEME.sizes.md,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   avatarContainer: {
     alignItems: 'center',
-    marginBottom: THEME.sizes.lg,
+    marginBottom: THEME.sizes.md,
   },
   title: {
     fontSize: 28,
@@ -275,11 +266,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: THEME.sizes.md,
   },
   formCard: {
+    width: '100%',
+    maxWidth: 450,
     padding: THEME.sizes.lg,
     marginBottom: THEME.sizes.md,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    shadowColor: '#FF8A3D',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 6,
   },
   formTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
     color: THEME.colors.textPrimary,
     marginBottom: THEME.sizes.md,
@@ -292,10 +292,13 @@ const styles = StyleSheet.create({
     marginTop: THEME.sizes.xs,
   },
   configCard: {
+    width: '100%',
+    maxWidth: 450,
     padding: THEME.sizes.md,
     borderWidth: 1,
     borderColor: THEME.colors.warning + '50',
     backgroundColor: 'rgba(245, 158, 11, 0.05)',
+    borderRadius: 16,
   },
   configTitle: {
     fontSize: 16,
@@ -313,11 +316,7 @@ const styles = StyleSheet.create({
     borderColor: THEME.colors.warning,
   },
   debugText: {
-    color: '#8B5CF6',
-    fontSize: 10,
-    textAlign: 'center',
-    marginTop: 20,
-    opacity: 0.65,
+    display: 'none',
   },
   errorBanner: {
     backgroundColor: 'rgba(239, 68, 68, 0.08)',

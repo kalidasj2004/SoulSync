@@ -17,9 +17,7 @@ export default function LoginScreen() {
   const navigation = useNavigation();
   const { language, refreshAppKeys, appKeysSource } = useContext(AppContext);
   useEffect(() => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.location.href = 'http://127.0.0.1:5173/';
-    }
+    
   }, []);
 
 
@@ -35,9 +33,7 @@ export default function LoginScreen() {
   const [generalError, setGeneralError] = useState('');
 
   // Supabase developer credentials setup state (if missing)
-  const [dbUrl, setDbUrl] = useState('');
-  const [dbKey, setDbKey] = useState('');
-  const [showConfig, setShowConfig] = useState(!supabase);
+  
 
   const handleLogin = async () => {
     // Clear previous errors
@@ -188,49 +184,8 @@ export default function LoginScreen() {
         </Card>
 
         {/* Developer Keys Configuration Dropdown */}
-        {showConfig ? (
-          <Card style={styles.configCard}>
-            <Text style={styles.configTitle}>🔧 Connect Your Supabase Backend</Text>
-            <Text style={styles.configText}>
-              Enter your credentials to wire up Auth, Mood Logs, and Journals.
-            </Text>
+        
 
-            <Input
-              label="Supabase URL"
-              placeholder="https://your-project-id.supabase.co"
-              value={dbUrl}
-              onChangeText={setDbUrl}
-            />
-
-            <Input
-              label="Supabase Anon Key"
-              placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-              value={dbKey}
-              onChangeText={setDbKey}
-            />
-
-            <Button
-              title="Save & Connect"
-              onPress={handleSaveKeys}
-              variant="accent"
-              size="small"
-            />
-          </Card>
-        ) : (
-          !supabase && (
-            <Button
-              title="Configure Supabase Database"
-              onPress={() => setShowConfig(true)}
-              variant="outline"
-              size="small"
-              style={styles.configToggleBtn}
-            />
-          )
-        )}
-
-        <Text style={styles.debugText}>
-          DB Source: {getSupabaseConfigInfo().source} | URL: {getSupabaseConfigInfo().url ? 'Loaded' : 'None'} | Key Prefix: {getSupabaseConfigInfo().keyPrefix} | Connection: {getSupabaseConfigInfo().testResult}
-        </Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );

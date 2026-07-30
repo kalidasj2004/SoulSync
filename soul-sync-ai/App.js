@@ -1,7 +1,7 @@
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, StatusBar, SafeAreaView, ActivityIndicator, Platform } from 'react-native';
+import { StyleSheet, View, Text, StatusBar, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -32,28 +32,7 @@ export default function App() {
       setAppKeysSource(supInfo.source === 'Custom Settings' || gemInfo.source === 'Custom Settings' ? 'Custom Settings' : 'System');
 
       if (supabase) {
-        // SSO Session parsing from web auth redirect
-        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.hash) {
-          const hash = window.location.hash.substring(1);
-          const params = new URLSearchParams(hash);
-          const accessToken = params.get('access_token');
-          const refreshToken = params.get('refresh_token');
-          
-          if (accessToken && refreshToken) {
-            console.log('DEBUG [SSO Auth] Found session tokens in URL hash. Injecting session...');
-            const { data: ssoData, error: ssoErr } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken
-            });
-            if (ssoErr) {
-              console.log('DEBUG [SSO Auth] Session injection failed:', ssoErr.message);
-            } else {
-              console.log('DEBUG [SSO Auth] Session successfully injected! User:', ssoData.user?.email);
-              // Quietly strip token parameters from browser address bar
-              window.history.replaceState(null, '', window.location.pathname + window.location.search);
-            }
-          }
-        }
+
 
         // Get initial auth session
         const { data: { session: initialSession } } = await supabase.auth.getSession();
@@ -184,9 +163,6 @@ export default function App() {
   const handleLogout = () => {
     setSession(null);
     setProfile(null);
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.location.href = 'http://127.0.0.1:5173/';
-    }
   };
 
   // 4. Reload key configurations on-the-fly

@@ -70,29 +70,18 @@ export default function RegisterScreen() {
 
       if (isEmailConfirmationRequired) {
         const msg = 'Account created successfully! A confirmation link has been sent to your email. Please check your inbox and confirm your email before logging in.';
-        if (Platform.OS === 'web') {
-          alert(msg);
-          navigation.navigate(ROUTES.LOGIN);
-        } else {
-          Alert.alert(
+                Alert.alert(
             'Success',
             msg,
             [{ text: 'OK', onPress: () => navigation.navigate(ROUTES.LOGIN) }]
           );
-        }
       } else {
         const msg = `Account created successfully! Welcome to SoulSync AI, ${displayName}.`;
-        if (Platform.OS === 'web') {
-          alert(msg);
-          // App.js auth listener will automatically handle home transition, but we trigger standard stack redirect as fallback
-          navigation.navigate(ROUTES.HOME || 'Main');
-        } else {
-          Alert.alert(
+                Alert.alert(
             'Success',
             msg,
             [{ text: 'Get Started', onPress: () => navigation.navigate(ROUTES.HOME || 'Main') }]
           );
-        }
       }
     } catch (error) {
       Alert.alert('Registration Failed', error.message || 'An error occurred.');

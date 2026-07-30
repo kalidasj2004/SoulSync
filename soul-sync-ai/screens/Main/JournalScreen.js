@@ -129,13 +129,7 @@ export default function JournalScreen() {
       }
     };
 
-    if (Platform.OS === 'web') {
-      const confirm = window.confirm(translate('deleteConfirm', language));
-      if (confirm) {
-        executeDelete();
-      }
-    } else {
-      Alert.alert(
+    Alert.alert(
         translate('deleteJournal', language),
         translate('deleteConfirm', language),
         [
@@ -147,7 +141,6 @@ export default function JournalScreen() {
           },
         ]
       );
-    }
   };
 
   const resetForm = () => {

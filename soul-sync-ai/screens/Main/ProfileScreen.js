@@ -95,13 +95,7 @@ export default function ProfileScreen() {
       }
     };
 
-    if (Platform.OS === 'web') {
-      const confirm = window.confirm('Are you sure you want to sign out of SoulSync AI?');
-      if (confirm) {
-        performLogout();
-      }
-    } else {
-      Alert.alert(
+        Alert.alert(
         translate('logout', language),
         'Are you sure you want to sign out of SoulSync AI?',
         [

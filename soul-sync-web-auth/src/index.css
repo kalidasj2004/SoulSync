@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-orange: #FF8A3D;
+  --color-brand-yellow: #FFD54A;
+  --color-brand-cream: #FAF6F0;
+  --color-brand-peach: #FFEAD2;
+  --color-brand-darkBg: #0F172A;
+  --color-brand-darkCard: #1E293B;
+
+  --animate-float-slow: floatSlow 6s ease-in-out infinite;
+  --animate-drift-blob1: driftBlob1 25s infinite alternate ease-in-out;
+  --animate-drift-blob2: driftBlob2 20s infinite alternate ease-in-out;
+
+  @keyframes floatSlow {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-12px); }
+  }
+  @keyframes driftBlob1 {
+    0% { transform: translate(0px, 0px) scale(1); }
+    50% { transform: translate(40px, -60px) scale(1.15); }
+    100% { transform: translate(-20px, 20px) scale(0.95); }
+  }
+  @keyframes driftBlob2 {
+    0% { transform: translate(0px, 0px) scale(1); }
+    50% { transform: translate(-50px, 40px) scale(0.9); }
+    100% { transform: translate(30px, -30px) scale(1.1); }
+  }
+}
+
+body {
+  @apply bg-brand-cream text-slate-800 transition-colors duration-300 antialiased selection:bg-brand-orange/20;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+body.dark {
+  @apply bg-brand-darkBg text-slate-100;
+}
+
+/* Custom Glassmorphism Cards */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.dark .glass-panel {
+  background: rgba(30, 41, 59, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Custom Scrollbar for sleekness */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.5);
+}

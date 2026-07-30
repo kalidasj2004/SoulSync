@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import AnimatedCompanion from './AnimatedCompanion';
 import LoginForm from './LoginForm';
 import RegisterForm from './RegisterForm';
+import { supabase } from '../services/supabase';
 
 export default function AuthCard({ darkMode, onToggleDarkMode }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -14,6 +15,13 @@ export default function AuthCard({ darkMode, onToggleDarkMode }) {
   
   // Track direction of form slide transitions
   const [direction, setDirection] = useState(1);
+
+  useEffect(() => {
+    if (!supabase) {
+      setStatusType('error');
+      setStatusMessage('⚠️ Configuration Required: Supabase credentials are missing. Please create a `.env` file in the root of `soul-sync-web-auth/` with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable authentication.');
+    }
+  }, []);
 
   const toggleForm = () => {
     setDirection(isLogin ? -1 : 1);

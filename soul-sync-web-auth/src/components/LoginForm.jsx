@@ -33,6 +33,10 @@ export default function LoginForm({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!supabase) {
+      onLoginError('⚠️ Configuration Required: Supabase is not connected. Please create a `.env` file in the root of `soul-sync-web-auth/` to configure credentials.');
+      return;
+    }
     if (!validateForm()) return;
     
     onLoginStart();
@@ -51,6 +55,10 @@ export default function LoginForm({
   };
 
   const handleSocialLogin = async (provider) => {
+    if (!supabase) {
+      onLoginError('⚠️ Configuration Required: Supabase is not connected. Please configure your environment variables.');
+      return;
+    }
     onLoginStart();
     try {
       const { error } = await supabase.auth.signInWithOAuth({

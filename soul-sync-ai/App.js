@@ -160,10 +160,20 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
-    setSession(null);
-    setProfile(null);
+  const handleLogout = async () => {
+    try {
+      const supabase = getSupabase();
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+    } catch (e) {
+      console.log('Logout error:', e.message);
+    } finally {
+      setSession(null);
+      setProfile(null);
+    }
   };
+
 
   // 4. Reload key configurations on-the-fly
   const refreshAppKeys = async () => {

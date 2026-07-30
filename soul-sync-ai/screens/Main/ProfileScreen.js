@@ -83,32 +83,21 @@ export default function ProfileScreen() {
   };
 
   const confirmLogout = () => {
-    const performLogout = async () => {
-      try {
-        if (supabase) {
-          await supabase.auth.signOut();
+    Alert.alert(
+      translate('logout', language),
+      'Are you sure you want to sign out of SoulSync AI?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: handleLogout,
         }
-      } catch (e) {
-        console.log('Signout error:', e.message);
-      } finally {
-        handleLogout();
-      }
-    };
-
-        Alert.alert(
-        translate('logout', language),
-        'Are you sure you want to sign out of SoulSync AI?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Sign Out', 
-            style: 'destructive',
-            onPress: performLogout,
-          }
-        ]
-      );
-    }
+      ]
+    );
   };
+
+
 
   const signatureMoodConfig = dominantMood ? MOODS[dominantMood] : null;
 

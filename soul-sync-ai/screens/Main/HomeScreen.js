@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useContext, useCallback } from 'react';
-import { StyleSheet, Text, View, ScrollView, RefreshControl, Platform, TouchableOpacity, Image } from 'react-native';
+import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
+import { StyleSheet, Text, View, ScrollView, RefreshControl, Platform, TouchableOpacity, Image, Animated } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getSupabase } from '../../services/supabase';
@@ -12,6 +12,83 @@ import { MOODS } from '../../utils/helpers';
 // Components
 import Header from '../../components/Header';
 import Card from '../../components/Card';
+
+/* ─── Floating Bubble Background ─── */
+function Bubble({ size, left, delay, duration }) {
+  const translateY = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animate = () => {
+      translateY.setValue(0);
+      opacity.setValue(0);
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.parallel([
+          Animated.timing(translateY, {
+            toValue: -700,
+            duration,
+            useNativeDriver: true,
+          }),
+          Animated.sequence([
+            Animated.timing(opacity, { toValue: 0.35, duration: 600, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 0.35, duration: duration - 1200, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 0, duration: 600, useNativeDriver: true }),
+          ]),
+        ]),
+      ]).start(() => animate());
+    };
+    animate();
+  }, []);
+
+  return (
+    <Animated.View
+      style={[
+        bubbleStyles.bubble,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          left: `${left}%`,
+          transform: [{ translateY }],
+          opacity,
+        },
+      ]}
+    />
+  );
+}
+
+const BUBBLES = Array.from({ length: 14 }, (_, i) => ({
+  id: i,
+  size: 10 + Math.random() * 26,
+  left: Math.random() * 90,
+  delay: Math.random() * 5000,
+  duration: 6000 + Math.random() * 7000,
+}));
+
+function BubbleBackground() {
+  return (
+    <View style={bubbleStyles.container} pointerEvents="none">
+      {BUBBLES.map(b => <Bubble key={b.id} {...b} />)}
+    </View>
+  );
+}
+
+const bubbleStyles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    overflow: 'hidden',
+    zIndex: 0,
+  },
+  bubble: {
+    position: 'absolute',
+    bottom: -30,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,138,61,0.35)',
+    backgroundColor: 'rgba(255,213,74,0.12)',
+  },
+});
 
 export default function HomeScreen() {
   const navigation = useNavigation();
@@ -87,6 +164,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
+      <BubbleBackground />
       <Header 
         title="SoulSync AI" 
         leftComponent={

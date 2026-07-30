@@ -49,10 +49,6 @@ export default function RegisterForm({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!supabase) {
-      onRegisterError('⚠️ Configuration Required: Supabase is not connected. Please create a `.env` file in the root of `soul-sync-web-auth/` to configure credentials.');
-      return;
-    }
     if (!validateForm()) return;
 
     onRegisterStart();

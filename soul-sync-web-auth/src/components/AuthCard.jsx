@@ -16,13 +16,6 @@ export default function AuthCard({ darkMode, onToggleDarkMode }) {
   // Track direction of form slide transitions
   const [direction, setDirection] = useState(1);
 
-  useEffect(() => {
-    if (!supabase) {
-      setStatusType('error');
-      setStatusMessage('⚠️ Configuration Required: Supabase credentials are missing. Please create a `.env` file in the root of `soul-sync-web-auth/` with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable authentication.');
-    }
-  }, []);
-
   const toggleForm = () => {
     setDirection(isLogin ? -1 : 1);
     setIsLogin(prev => !prev);

@@ -82,19 +82,34 @@ export default function ProfileScreen() {
     setRefreshing(false);
   };
 
-  const confirmLogout = () => {
-    Alert.alert(
-      translate('logout', language),
-      'Are you sure you want to sign out of SoulSync AI?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: handleLogout,
-        }
-      ]
-    );
+  const confirmLogout = async () => {
+    const executeLogout = async () => {
+      try {
+        await handleLogout();
+      } catch (e) {
+        console.log('Logout error:', e);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('Are you sure you want to sign out of SoulSync AI?');
+      if (confirmed) {
+        await executeLogout();
+      }
+    } else {
+      Alert.alert(
+        translate('logout', language),
+        'Are you sure you want to sign out of SoulSync AI?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Sign Out',
+            style: 'destructive',
+            onPress: executeLogout,
+          }
+        ]
+      );
+    }
   };
 
 

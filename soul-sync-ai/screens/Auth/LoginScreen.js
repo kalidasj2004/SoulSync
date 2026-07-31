@@ -21,7 +21,113 @@ import { ROUTES } from '../../navigation/RouteNames';
 // Components
 import CompanionAvatar from '../../components/CompanionAvatar';
 
-const { width } = Dimensions.get('window');
+/* ─── Floating Glossy Bubbles Background ─── */
+function Bubble({ size, left, delay, duration }) {
+  const translateY = useRef(new Animated.Value(0)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animate = () => {
+      translateY.setValue(0);
+      translateX.setValue(0);
+      opacity.setValue(0);
+
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.parallel([
+          Animated.timing(translateY, {
+            toValue: -850,
+            duration,
+            useNativeDriver: true,
+          }),
+          Animated.sequence([
+            Animated.timing(translateX, { toValue: 16, duration: duration / 2, useNativeDriver: true }),
+            Animated.timing(translateX, { toValue: -16, duration: duration / 2, useNativeDriver: true }),
+          ]),
+          Animated.sequence([
+            Animated.timing(opacity, { toValue: 0.65, duration: 800, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 0.65, duration: duration - 1600, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 0, duration: 800, useNativeDriver: true }),
+          ]),
+        ]),
+      ]).start(() => animate());
+    };
+    animate();
+  }, []);
+
+  const highlightSize = Math.max(3, size * 0.25);
+
+  return (
+    <Animated.View
+      style={[
+        bubbleStyles.bubble,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          left: `${left}%`,
+          transform: [{ translateY }, { translateX }],
+          opacity,
+        },
+      ]}
+    >
+      <View
+        style={[
+          bubbleStyles.bubbleHighlight,
+          {
+            width: highlightSize,
+            height: highlightSize,
+            borderRadius: highlightSize / 2,
+          },
+        ]}
+      />
+    </Animated.View>
+  );
+}
+
+const BUBBLES = Array.from({ length: 24 }, (_, i) => ({
+  id: i,
+  size: 10 + Math.random() * 30,
+  left: Math.random() * 92,
+  delay: Math.random() * 5000,
+  duration: 5000 + Math.random() * 6500,
+}));
+
+function BubbleBackground() {
+  return (
+    <View style={bubbleStyles.container} pointerEvents="none">
+      {BUBBLES.map(b => <Bubble key={b.id} {...b} />)}
+    </View>
+  );
+}
+
+const bubbleStyles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    overflow: 'hidden',
+    zIndex: 0,
+  },
+  bubble: {
+    position: 'absolute',
+    bottom: -40,
+    borderWidth: 2,
+    borderColor: 'rgba(245, 158, 11, 0.55)',
+    backgroundColor: 'rgba(254, 240, 138, 0.38)',
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  bubbleHighlight: {
+    position: 'absolute',
+    top: '18%',
+    left: '22%',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+  },
+});
 
 export default function LoginScreen() {
   const navigation = useNavigation();
@@ -120,6 +226,7 @@ export default function LoginScreen() {
       {/* Background Radial Blobs */}
       <View style={styles.blobTopLeft} pointerEvents="none" />
       <View style={styles.blobBottomRight} pointerEvents="none" />
+      <BubbleBackground />
 
       {/* Dark Mode Moon Switch Button (Top Right) */}
       <TouchableOpacity

@@ -13,33 +13,42 @@ import { MOODS } from '../../utils/helpers';
 import Header from '../../components/Header';
 import Card from '../../components/Card';
 
-/* ─── Floating Bubble Background ─── */
+/* ─── Defined Glossy Bubble Background (HomeScreen Only) ─── */
 function Bubble({ size, left, delay, duration }) {
   const translateY = useRef(new Animated.Value(0)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const animate = () => {
       translateY.setValue(0);
+      translateX.setValue(0);
       opacity.setValue(0);
+
       Animated.sequence([
         Animated.delay(delay),
         Animated.parallel([
           Animated.timing(translateY, {
-            toValue: -700,
+            toValue: -800,
             duration,
             useNativeDriver: true,
           }),
           Animated.sequence([
-            Animated.timing(opacity, { toValue: 0.35, duration: 600, useNativeDriver: true }),
-            Animated.timing(opacity, { toValue: 0.35, duration: duration - 1200, useNativeDriver: true }),
-            Animated.timing(opacity, { toValue: 0, duration: 600, useNativeDriver: true }),
+            Animated.timing(translateX, { toValue: 15, duration: duration / 2, useNativeDriver: true }),
+            Animated.timing(translateX, { toValue: -15, duration: duration / 2, useNativeDriver: true }),
+          ]),
+          Animated.sequence([
+            Animated.timing(opacity, { toValue: 0.65, duration: 800, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 0.65, duration: duration - 1600, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 0, duration: 800, useNativeDriver: true }),
           ]),
         ]),
       ]).start(() => animate());
     };
     animate();
   }, []);
+
+  const highlightSize = Math.max(3, size * 0.25);
 
   return (
     <Animated.View
@@ -50,20 +59,31 @@ function Bubble({ size, left, delay, duration }) {
           height: size,
           borderRadius: size / 2,
           left: `${left}%`,
-          transform: [{ translateY }],
+          transform: [{ translateY }, { translateX }],
           opacity,
         },
       ]}
-    />
+    >
+      <View
+        style={[
+          bubbleStyles.bubbleHighlight,
+          {
+            width: highlightSize,
+            height: highlightSize,
+            borderRadius: highlightSize / 2,
+          },
+        ]}
+      />
+    </Animated.View>
   );
 }
 
-const BUBBLES = Array.from({ length: 14 }, (_, i) => ({
+const BUBBLES = Array.from({ length: 18 }, (_, i) => ({
   id: i,
-  size: 10 + Math.random() * 26,
-  left: Math.random() * 90,
-  delay: Math.random() * 5000,
-  duration: 6000 + Math.random() * 7000,
+  size: 14 + Math.random() * 28,
+  left: Math.random() * 88,
+  delay: Math.random() * 4000,
+  duration: 5000 + Math.random() * 6000,
 }));
 
 function BubbleBackground() {
@@ -83,10 +103,21 @@ const bubbleStyles = StyleSheet.create({
   },
   bubble: {
     position: 'absolute',
-    bottom: -30,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,138,61,0.35)',
-    backgroundColor: 'rgba(255,213,74,0.12)',
+    bottom: -40,
+    borderWidth: 2,
+    borderColor: 'rgba(245, 158, 11, 0.55)',
+    backgroundColor: 'rgba(254, 240, 138, 0.38)',
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  bubbleHighlight: {
+    position: 'absolute',
+    top: '18%',
+    left: '22%',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
   },
 });
 
@@ -163,7 +194,7 @@ export default function HomeScreen() {
   const activeMoodInfo = currentMood ? MOODS[currentMood] : null;
 
   return (
-    <View style={styles.container}>
+    <LinearGradient colors={['#FFFDF0', '#FEF3C7', '#FDE68A']} style={styles.container}>
       <BubbleBackground />
       <Header 
         title="SoulSync AI" 
@@ -316,7 +347,7 @@ export default function HomeScreen() {
           </View>
         </Card>
       </ScrollView>
-    </View>
+    </LinearGradient>
   );
 }
 

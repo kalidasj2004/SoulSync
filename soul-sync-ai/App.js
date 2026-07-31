@@ -171,6 +171,9 @@ export default function App() {
     } finally {
       setSession(null);
       setProfile(null);
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.location.href = 'http://localhost:5174';
+      }
     }
   };
 

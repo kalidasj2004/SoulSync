@@ -16,162 +16,20 @@ import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getSupabase } from '../../services/supabase';
 import { AppContext } from '../../AppContext';
-import { THEME } from '../../utils/theme';
 import { ROUTES } from '../../navigation/RouteNames';
-import { translate } from '../../services/translations';
 
 // Components
 import CompanionAvatar from '../../components/CompanionAvatar';
 
 const { width } = Dimensions.get('window');
 
-/* ─── Floating Glossy Bubbles ─── */
-function Bubble({ size, left, delay, duration }) {
-  const translateY = useRef(new Animated.Value(0)).current;
-  const translateX = useRef(new Animated.Value(0)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const animate = () => {
-      translateY.setValue(0);
-      translateX.setValue(0);
-      opacity.setValue(0);
-
-      Animated.sequence([
-        Animated.delay(delay),
-        Animated.parallel([
-          Animated.timing(translateY, {
-            toValue: -750,
-            duration,
-            useNativeDriver: true,
-          }),
-          Animated.sequence([
-            Animated.timing(translateX, { toValue: 12, duration: duration / 2, useNativeDriver: true }),
-            Animated.timing(translateX, { toValue: -12, duration: duration / 2, useNativeDriver: true }),
-          ]),
-          Animated.sequence([
-            Animated.timing(opacity, { toValue: 0.55, duration: 800, useNativeDriver: true }),
-            Animated.timing(opacity, { toValue: 0.55, duration: duration - 1600, useNativeDriver: true }),
-            Animated.timing(opacity, { toValue: 0, duration: 800, useNativeDriver: true }),
-          ]),
-        ]),
-      ]).start(() => animate());
-    };
-    animate();
-  }, []);
-
-  const highlightSize = Math.max(3, size * 0.25);
-
-  return (
-    <Animated.View
-      style={[
-        bubbleStyles.bubble,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          left: `${left}%`,
-          transform: [{ translateY }, { translateX }],
-          opacity,
-        },
-      ]}
-    >
-      <View
-        style={[
-          bubbleStyles.bubbleHighlight,
-          {
-            width: highlightSize,
-            height: highlightSize,
-            borderRadius: highlightSize / 2,
-          },
-        ]}
-      />
-    </Animated.View>
-  );
-}
-
-const BUBBLES = Array.from({ length: 16 }, (_, i) => ({
-  id: i,
-  size: 12 + Math.random() * 26,
-  left: Math.random() * 88,
-  delay: Math.random() * 4000,
-  duration: 5500 + Math.random() * 6500,
-}));
-
-function BubbleBackground() {
-  return (
-    <View style={bubbleStyles.container} pointerEvents="none">
-      {BUBBLES.map(b => <Bubble key={b.id} {...b} />)}
-    </View>
-  );
-}
-
-const bubbleStyles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    overflow: 'hidden',
-    zIndex: 0,
-  },
-  bubble: {
-    position: 'absolute',
-    bottom: -40,
-    borderWidth: 2,
-    borderColor: 'rgba(245, 158, 11, 0.5)',
-    backgroundColor: 'rgba(254, 240, 138, 0.35)',
-    shadowColor: '#F59E0B',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  bubbleHighlight: {
-    position: 'absolute',
-    top: '18%',
-    left: '22%',
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-  },
-});
-
-/* ─── Custom Input Component ─── */
-function NativeInput({ label, icon, placeholder, value, onChangeText, secureTextEntry, rightIcon, onRightIconPress, error, keyboardType = 'default' }) {
-  const [focused, setFocused] = useState(false);
-
-  return (
-    <View style={styles.inputGroup}>
-      {label ? <Text style={styles.inputLabel}>{label}</Text> : null}
-      <View style={[styles.inputContainer, focused && styles.inputFocused, error && styles.inputError]}>
-        {icon ? <Text style={styles.inputIcon}>{icon}</Text> : null}
-        <TextInput
-          style={styles.textInput}
-          placeholder={placeholder}
-          placeholderTextColor="#A1A1AA"
-          value={value}
-          onChangeText={onChangeText}
-          secureTextEntry={secureTextEntry}
-          keyboardType={keyboardType}
-          autoCapitalize="none"
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-        />
-        {rightIcon ? (
-          <TouchableOpacity onPress={onRightIconPress} style={styles.rightIconBtn}>
-            <Text style={{ fontSize: 16 }}>{rightIcon}</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
-      {error ? <Text style={styles.errorText}>⚠ {error}</Text> : null}
-    </View>
-  );
-}
-
-/* ─── Main Screen Component ─── */
 export default function LoginScreen() {
   const navigation = useNavigation();
   const { language } = useContext(AppContext);
   const supabase = getSupabase();
 
   const [mode, setMode] = useState('login'); // 'login' | 'signup'
+  const [darkMode, setDarkMode] = useState(false);
 
   // Form States
   const [fullName, setFullName] = useState('');
@@ -199,15 +57,15 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
       if (error) {
-        setErrors({ general: 'Invalid username or password.' });
+        setErrors({ general: error.message || 'Invalid email or password.' });
       }
-    } catch {
-      setErrors({ general: 'Something went wrong. Please try again.' });
+    } catch (e) {
+      setErrors({ general: e.message || 'Something went wrong. Please try again.' });
     } finally {
       setLoading(false);
     }
@@ -236,7 +94,7 @@ export default function LoginScreen() {
       if (error) {
         setErrors({ general: error.message });
       } else if (!data.session) {
-        setErrors({ general: 'Account created! Please check your email to confirm.' });
+        setErrors({ general: 'Account created! Check your email to confirm.' });
       }
     } catch {
       setErrors({ general: 'Registration failed. Please try again.' });
@@ -255,203 +113,285 @@ export default function LoginScreen() {
     }
   };
 
+  const isDark = darkMode;
+
   return (
-    <LinearGradient colors={['#FFFDF0', '#FEF3C7', '#FDE68A']} style={styles.container}>
-      <BubbleBackground />
+    <View style={[styles.screenContainer, { backgroundColor: isDark ? '#090D16' : '#FFFDF3' }]}>
+      {/* Background Radial Blobs */}
+      <View style={styles.blobTopLeft} pointerEvents="none" />
+      <View style={styles.blobBottomRight} pointerEvents="none" />
+
+      {/* Dark Mode Moon Switch Button (Top Right) */}
+      <TouchableOpacity
+        style={[styles.darkModeBtn, isDark && styles.darkModeBtnDark]}
+        onPress={() => setDarkMode(!darkMode)}
+        activeOpacity={0.8}
+      >
+        <Text style={{ fontSize: 16 }}>{isDark ? '☀️' : '🌙'}</Text>
+      </TouchableOpacity>
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
+        style={{ flex: 1, width: '100%' }}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContainer}
+          contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Header & Avatar */}
-          <View style={styles.headerContainer}>
-            <CompanionAvatar mood="happy" size={110} />
-            <Text style={styles.appTitle}>SoulSync AI</Text>
-            <Text style={styles.appSubtitle}>
-              {mode === 'login' ? 'Welcome Back 👋' : 'Create Account ✨'}
-            </Text>
-            <Text style={styles.appDesc}>
-              {mode === 'login' ? 'Continue your wellness journey' : 'Start your wellness journey today'}
-            </Text>
-          </View>
-
-          {/* Main Glassmorphic Card */}
-          <View style={styles.card}>
+          {/* Main Auth Card */}
+          <View style={[styles.card, isDark && styles.cardDark]}>
+            {/* Top Orange Accent Line */}
             <LinearGradient
-              colors={['#FF8A3D', '#FFD54A']}
+              colors={['#FF8A3D', '#FFD54A', '#FF8A3D']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={styles.topAccentBar}
+              style={styles.topBarAccent}
             />
 
-            {/* Tab Switcher */}
-            <View style={styles.tabContainer}>
+            {/* Pill Tab Switcher */}
+            <View style={[styles.pillTabContainer, isDark && styles.pillTabContainerDark]}>
               <TouchableOpacity
-                style={[styles.tabBtn, mode === 'login' && styles.activeTabBtn]}
+                style={styles.tabBtnHalf}
                 onPress={() => { setMode('login'); clearErrors(); }}
-                activeOpacity={0.8}
+                activeOpacity={0.85}
               >
                 {mode === 'login' ? (
-                  <LinearGradient colors={['#FF8A3D', '#FFD54A']} style={styles.tabGradient}>
-                    <Text style={styles.activeTabText}>Sign In</Text>
+                  <LinearGradient colors={['#FF8A3D', '#FFD54A']} style={styles.tabPillGradient}>
+                    <Text style={styles.tabTextActive}>Sign In</Text>
                   </LinearGradient>
                 ) : (
-                  <Text style={styles.inactiveTabText}>Sign In</Text>
+                  <View style={styles.tabPillInactive}>
+                    <Text style={[styles.tabTextInactive, isDark && { color: '#9CA3AF' }]}>Sign In</Text>
+                  </View>
                 )}
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.tabBtn, mode === 'signup' && styles.activeTabBtn]}
+                style={styles.tabBtnHalf}
                 onPress={() => { setMode('signup'); clearErrors(); }}
-                activeOpacity={0.8}
+                activeOpacity={0.85}
               >
                 {mode === 'signup' ? (
-                  <LinearGradient colors={['#FF8A3D', '#FFD54A']} style={styles.tabGradient}>
-                    <Text style={styles.activeTabText}>Sign Up</Text>
+                  <LinearGradient colors={['#FF8A3D', '#FFD54A']} style={styles.tabPillGradient}>
+                    <Text style={styles.tabTextActive}>Sign Up</Text>
                   </LinearGradient>
                 ) : (
-                  <Text style={styles.inactiveTabText}>Sign Up</Text>
+                  <View style={styles.tabPillInactive}>
+                    <Text style={[styles.tabTextInactive, isDark && { color: '#9CA3AF' }]}>Sign Up</Text>
+                  </View>
                 )}
               </TouchableOpacity>
             </View>
 
-            {/* Error Banner */}
+            {/* Cat Companion Avatar Header */}
+            <View style={styles.companionHeader}>
+              <View style={styles.avatarGlowCircle}>
+                <CompanionAvatar mood="happy" size={95} />
+              </View>
+
+              <Text style={[styles.headerTitle, isDark && { color: '#FFFFFF' }]}>
+                {mode === 'login' ? 'Welcome Back 👋' : 'Create Account ✨'}
+              </Text>
+              <Text style={[styles.headerSubtitle, isDark && { color: '#9CA3AF' }]}>
+                {mode === 'login' ? 'Continue your wellness journey' : 'Start your wellness journey today'}
+              </Text>
+            </View>
+
+            {/* Error Message Banner */}
             {errors.general ? (
               <View style={styles.errorBanner}>
                 <Text style={styles.errorBannerText}>{errors.general}</Text>
               </View>
             ) : null}
 
-            {/* FORM FIELDS */}
+            {/* FORM INPUTS */}
             {mode === 'login' ? (
               <>
-                <NativeInput
-                  label="Email Address"
-                  icon="📧"
-                  placeholder="name@email.com"
-                  value={email}
-                  onChangeText={(txt) => { setEmail(txt); clearErrors(); }}
-                  keyboardType="email-address"
-                  error={errors.email}
-                />
-                <NativeInput
-                  label="Password"
-                  icon="🔒"
-                  placeholder="••••••••"
-                  value={password}
-                  onChangeText={(txt) => { setPassword(txt); clearErrors(); }}
-                  secureTextEntry={!showPassword}
-                  rightIcon={showPassword ? '👁️' : '🙈'}
-                  onRightIconPress={() => setShowPassword(!showPassword)}
-                  error={errors.password}
-                />
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.fieldLabel, isDark && { color: '#D1D5DB' }]}>Email Address</Text>
+                  <View style={[styles.inputBox, isDark && styles.inputBoxDark]}>
+                    <Text style={styles.inputLeftIcon}>📧</Text>
+                    <TextInput
+                      style={[styles.inputControl, isDark && { color: '#FFFFFF' }]}
+                      placeholder="name@email.com"
+                      placeholderTextColor={isDark ? '#6B7280' : '#A1A1AA'}
+                      value={email}
+                      onChangeText={(txt) => { setEmail(txt); clearErrors(); }}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      selectionColor="#FF8A3D"
+                      underlineColorAndroid="transparent"
+                    />
+                  </View>
+                  {errors.email ? <Text style={styles.errorLine}>⚠ {errors.email}</Text> : null}
+                </View>
 
-                {/* Remember Me + Forgot Password */}
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.fieldLabel, isDark && { color: '#D1D5DB' }]}>Password</Text>
+                  <View style={[styles.inputBox, isDark && styles.inputBoxDark]}>
+                    <Text style={styles.inputLeftIcon}>🔒</Text>
+                    <TextInput
+                      style={[styles.inputControl, isDark && { color: '#FFFFFF' }]}
+                      placeholder="••••••••"
+                      placeholderTextColor={isDark ? '#6B7280' : '#A1A1AA'}
+                      value={password}
+                      onChangeText={(txt) => { setPassword(txt); clearErrors(); }}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      selectionColor="#FF8A3D"
+                      underlineColorAndroid="transparent"
+                    />
+                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ padding: 4 }}>
+                      <Text style={{ fontSize: 16 }}>{showPassword ? '👁️' : '🙈'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {errors.password ? <Text style={styles.errorLine}>⚠ {errors.password}</Text> : null}
+                </View>
+
+                {/* Options Row */}
                 <View style={styles.optionsRow}>
                   <TouchableOpacity
-                    style={styles.checkboxRow}
+                    style={styles.checkboxTouch}
                     onPress={() => setRememberMe(!rememberMe)}
                     activeOpacity={0.7}
                   >
-                    <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
-                      {rememberMe ? <Text style={styles.checkmark}>✓</Text> : null}
+                    <View style={[styles.checkboxBox, rememberMe && styles.checkboxBoxChecked]}>
+                      {rememberMe ? <Text style={styles.checkMarkSymbol}>✓</Text> : null}
                     </View>
-                    <Text style={styles.checkboxLabel}>Remember Me</Text>
+                    <Text style={[styles.checkboxText, isDark && { color: '#D1D5DB' }]}>Remember Me</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity activeOpacity={0.7}>
-                    <Text style={styles.forgotText}>Forgot Password?</Text>
+                    <Text style={styles.forgotPassLink}>Forgot Password?</Text>
                   </TouchableOpacity>
                 </View>
 
-                {/* Submit Button */}
+                {/* Action Submit Button */}
                 <TouchableOpacity
                   onPress={handleLogin}
                   disabled={loading}
-                  activeOpacity={0.85}
-                  style={{ marginTop: 8 }}
+                  activeOpacity={0.88}
+                  style={styles.submitBtnContainer}
                 >
-                  <LinearGradient colors={['#FF8A3D', '#FFD54A']} style={styles.submitBtnGradient}>
+                  <LinearGradient
+                    colors={['#FF8A3D', '#FFD54A']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.submitGradientPill}
+                  >
                     {loading ? (
                       <ActivityIndicator color="#FFFFFF" size="small" />
                     ) : (
-                      <Text style={styles.submitBtnText}>Sign In →</Text>
+                      <Text style={styles.submitBtnLabel}>Sign In →</Text>
                     )}
                   </LinearGradient>
                 </TouchableOpacity>
               </>
             ) : (
               <>
-                <NativeInput
-                  label="Full Name"
-                  icon="👤"
-                  placeholder="Your full name"
-                  value={fullName}
-                  onChangeText={(txt) => { setFullName(txt); clearErrors(); }}
-                  error={errors.fullName}
-                />
-                <NativeInput
-                  label="Email Address"
-                  icon="📧"
-                  placeholder="name@email.com"
-                  value={email}
-                  onChangeText={(txt) => { setEmail(txt); clearErrors(); }}
-                  keyboardType="email-address"
-                  error={errors.email}
-                />
-                <NativeInput
-                  label="Password"
-                  icon="🔒"
-                  placeholder="Min. 6 characters"
-                  value={password}
-                  onChangeText={(txt) => { setPassword(txt); clearErrors(); }}
-                  secureTextEntry={!showPassword}
-                  rightIcon={showPassword ? '👁️' : '🙈'}
-                  onRightIconPress={() => setShowPassword(!showPassword)}
-                  error={errors.password}
-                />
-                <NativeInput
-                  label="Confirm Password"
-                  icon="🔐"
-                  placeholder="Repeat password"
-                  value={confirmPassword}
-                  onChangeText={(txt) => { setConfirmPassword(txt); clearErrors(); }}
-                  secureTextEntry={!showConfirm}
-                  rightIcon={showConfirm ? '👁️' : '🙈'}
-                  onRightIconPress={() => setShowConfirm(!showConfirm)}
-                  error={errors.confirm}
-                />
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.fieldLabel, isDark && { color: '#D1D5DB' }]}>Full Name</Text>
+                  <View style={[styles.inputBox, isDark && styles.inputBoxDark]}>
+                    <Text style={styles.inputLeftIcon}>👤</Text>
+                    <TextInput
+                      style={[styles.inputControl, isDark && { color: '#FFFFFF' }]}
+                      placeholder="Your full name"
+                      placeholderTextColor={isDark ? '#6B7280' : '#A1A1AA'}
+                      value={fullName}
+                      onChangeText={(txt) => { setFullName(txt); clearErrors(); }}
+                    />
+                  </View>
+                  {errors.fullName ? <Text style={styles.errorLine}>⚠ {errors.fullName}</Text> : null}
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.fieldLabel, isDark && { color: '#D1D5DB' }]}>Email Address</Text>
+                  <View style={[styles.inputBox, isDark && styles.inputBoxDark]}>
+                    <Text style={styles.inputLeftIcon}>📧</Text>
+                    <TextInput
+                      style={[styles.inputControl, isDark && { color: '#FFFFFF' }]}
+                      placeholder="name@email.com"
+                      placeholderTextColor={isDark ? '#6B7280' : '#A1A1AA'}
+                      value={email}
+                      onChangeText={(txt) => { setEmail(txt); clearErrors(); }}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                    />
+                  </View>
+                  {errors.email ? <Text style={styles.errorLine}>⚠ {errors.email}</Text> : null}
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.fieldLabel, isDark && { color: '#D1D5DB' }]}>Password</Text>
+                  <View style={[styles.inputBox, isDark && styles.inputBoxDark]}>
+                    <Text style={styles.inputLeftIcon}>🔒</Text>
+                    <TextInput
+                      style={[styles.inputControl, isDark && { color: '#FFFFFF' }]}
+                      placeholder="Min. 6 characters"
+                      placeholderTextColor={isDark ? '#6B7280' : '#A1A1AA'}
+                      value={password}
+                      onChangeText={(txt) => { setPassword(txt); clearErrors(); }}
+                      secureTextEntry={!showPassword}
+                    />
+                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                      <Text style={{ fontSize: 16 }}>{showPassword ? '👁️' : '🙈'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {errors.password ? <Text style={styles.errorLine}>⚠ {errors.password}</Text> : null}
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.fieldLabel, isDark && { color: '#D1D5DB' }]}>Confirm Password</Text>
+                  <View style={[styles.inputBox, isDark && styles.inputBoxDark]}>
+                    <Text style={styles.inputLeftIcon}>🔐</Text>
+                    <TextInput
+                      style={[styles.inputControl, isDark && { color: '#FFFFFF' }]}
+                      placeholder="Repeat password"
+                      placeholderTextColor={isDark ? '#6B7280' : '#A1A1AA'}
+                      value={confirmPassword}
+                      onChangeText={(txt) => { setConfirmPassword(txt); clearErrors(); }}
+                      secureTextEntry={!showConfirm}
+                    />
+                    <TouchableOpacity onPress={() => setShowConfirm(!showConfirm)}>
+                      <Text style={{ fontSize: 16 }}>{showConfirm ? '👁️' : '🙈'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {errors.confirm ? <Text style={styles.errorLine}>⚠ {errors.confirm}</Text> : null}
+                </View>
 
                 {/* Terms Checkbox */}
                 <TouchableOpacity
-                  style={[styles.checkboxRow, { marginBottom: 16 }]}
+                  style={[styles.checkboxTouch, { marginBottom: 16 }]}
                   onPress={() => setAgreeTerms(!agreeTerms)}
                   activeOpacity={0.7}
                 >
-                  <View style={[styles.checkbox, agreeTerms && styles.checkboxChecked]}>
-                    {agreeTerms ? <Text style={styles.checkmark}>✓</Text> : null}
+                  <View style={[styles.checkboxBox, agreeTerms && styles.checkboxBoxChecked]}>
+                    {agreeTerms ? <Text style={styles.checkMarkSymbol}>✓</Text> : null}
                   </View>
-                  <Text style={styles.checkboxLabel}>
-                    I agree to <Text style={styles.termsLink}>Terms & Privacy Policy</Text>
+                  <Text style={[styles.checkboxText, isDark && { color: '#D1D5DB' }]}>
+                    I agree to <Text style={{ color: '#FF8A3D', fontWeight: '700' }}>Terms & Privacy Policy</Text>
                   </Text>
                 </TouchableOpacity>
-                {errors.agreeTerms ? <Text style={[styles.errorText, { marginBottom: 8 }]}>⚠ {errors.agreeTerms}</Text> : null}
+                {errors.agreeTerms ? <Text style={[styles.errorLine, { marginBottom: 8 }]}>⚠ {errors.agreeTerms}</Text> : null}
 
-                {/* Submit Button */}
+                {/* Action Submit Button */}
                 <TouchableOpacity
                   onPress={handleSignUp}
                   disabled={loading}
-                  activeOpacity={0.85}
+                  activeOpacity={0.88}
+                  style={styles.submitBtnContainer}
                 >
-                  <LinearGradient colors={['#FF8A3D', '#FFD54A']} style={styles.submitBtnGradient}>
+                  <LinearGradient
+                    colors={['#FF8A3D', '#FFD54A']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.submitGradientPill}
+                  >
                     {loading ? (
                       <ActivityIndicator color="#FFFFFF" size="small" />
                     ) : (
-                      <Text style={styles.submitBtnText}>Create Account →</Text>
+                      <Text style={styles.submitBtnLabel}>Create Account →</Text>
                     )}
                   </LinearGradient>
                 </TouchableOpacity>
@@ -459,200 +399,251 @@ export default function LoginScreen() {
             )}
 
             {/* Social Divider */}
-            <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or {mode === 'login' ? 'continue' : 'sign up'} with</Text>
-              <View style={styles.dividerLine} />
+            <View style={styles.dividerContainer}>
+              <View style={[styles.lineDivider, isDark && { backgroundColor: '#374151' }]} />
+              <Text style={[styles.dividerLabelText, isDark && { color: '#9CA3AF' }]}>
+                or {mode === 'login' ? 'continue' : 'sign up'} with
+              </Text>
+              <View style={[styles.lineDivider, isDark && { backgroundColor: '#374151' }]} />
             </View>
 
-            {/* Social Buttons */}
-            <View style={styles.socialRow}>
+            {/* Social Authentication Pills */}
+            <View style={styles.socialButtonsRow}>
               <TouchableOpacity
-                style={styles.socialBtn}
+                style={[styles.socialPillBtn, isDark && styles.socialPillBtnDark]}
                 onPress={handleGoogleAuth}
-                activeOpacity={0.75}
+                activeOpacity={0.8}
               >
-                <Text style={styles.socialIcon}>🔍</Text>
-                <Text style={styles.socialBtnText}>Google</Text>
+                <Text style={{ fontSize: 16, marginRight: 8 }}>🔍</Text>
+                <Text style={[styles.socialPillLabel, isDark && { color: '#E5E7EB' }]}>Google</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.socialBtn}
-                onPress={() => setErrors({ general: 'Apple Sign-In is supported on iOS devices.' })}
-                activeOpacity={0.75}
+                style={[styles.socialPillBtn, isDark && styles.socialPillBtnDark]}
+                onPress={() => setErrors({ general: 'Apple Sign-In is supported on Apple devices.' })}
+                activeOpacity={0.8}
               >
-                <Text style={styles.socialIcon}>🍎</Text>
-                <Text style={styles.socialBtnText}>Apple</Text>
+                <Text style={{ fontSize: 16, marginRight: 8 }}>🍎</Text>
+                <Text style={[styles.socialPillLabel, isDark && { color: '#E5E7EB' }]}>Apple</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Bottom Switch Link */}
-            <View style={styles.switchRow}>
-              <Text style={styles.switchText}>
+            {/* Bottom Footer Switcher */}
+            <View style={styles.bottomSwitchRow}>
+              <Text style={[styles.bottomSwitchPrompt, isDark && { color: '#9CA3AF' }]}>
                 {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
               </Text>
               <TouchableOpacity onPress={() => { setMode(mode === 'login' ? 'signup' : 'login'); clearErrors(); }}>
-                <Text style={styles.switchLink}>{mode === 'login' ? 'Sign Up' : 'Sign In'}</Text>
+                <Text style={styles.bottomSwitchLink}>{mode === 'login' ? 'Sign Up' : 'Sign In'}</Text>
               </TouchableOpacity>
             </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screenContainer: {
     flex: 1,
+    position: 'relative',
   },
-  scrollContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 40,
+  blobTopLeft: {
+    position: 'absolute',
+    top: -60,
+    left: -80,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: 'rgba(255, 213, 74, 0.45)',
+  },
+  blobBottomRight: {
+    position: 'absolute',
+    bottom: -80,
+    right: -80,
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: 'rgba(255, 138, 61, 0.35)',
+  },
+  darkModeBtn: {
+    position: 'absolute',
+    top: 48,
+    right: 20,
+    zIndex: 99,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  darkModeBtnDark: {
+    backgroundColor: 'rgba(31, 41, 55, 0.85)',
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 50,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: '100%',
   },
-  headerContainer: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  appTitle: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: '#374151',
-    marginTop: 8,
-  },
-  appSubtitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1F2937',
-    marginTop: 4,
-  },
-  appDesc: {
-    fontSize: 13,
-    color: '#6B7280',
-    marginTop: 2,
-    fontWeight: '500',
-  },
   card: {
     width: '100%',
-    maxWidth: 420,
-    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    maxWidth: 400,
+    backgroundColor: '#FFFFFF',
     borderRadius: 28,
-    padding: 24,
+    paddingHorizontal: 22,
+    paddingVertical: 24,
     shadowColor: '#FF8A3D',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.14,
+    shadowRadius: 28,
     elevation: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.8)',
     position: 'relative',
     overflow: 'hidden',
   },
-  topAccentBar: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    height: 5,
+  cardDark: {
+    backgroundColor: '#111827',
+    shadowColor: '#000000',
+    shadowOpacity: 0.4,
   },
-  tabContainer: {
+  topBarAccent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 4,
+  },
+  pillTabContainer: {
     flexDirection: 'row',
     backgroundColor: '#F3F4F6',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 4,
     marginBottom: 20,
-    marginTop: 6,
+    marginTop: 4,
   },
-  tabBtn: {
+  pillTabContainerDark: {
+    backgroundColor: '#1F2937',
+  },
+  tabBtnHalf: {
     flex: 1,
-    borderRadius: 12,
+    height: 40,
+    borderRadius: 14,
     overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 38,
   },
-  activeTabBtn: {
-    elevation: 2,
-  },
-  tabGradient: {
+  tabPillGradient: {
     width: '100%',
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
+    borderRadius: 14,
   },
-  activeTabText: {
+  tabPillInactive: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabTextActive: {
     color: '#FFFFFF',
     fontWeight: '800',
-    fontSize: 13,
+    fontSize: 14,
   },
-  inactiveTabText: {
+  tabTextInactive: {
     color: '#6B7280',
     fontWeight: '700',
-    fontSize: 13,
-  },
-  inputGroup: {
-    marginBottom: 14,
-  },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#374151',
-    marginBottom: 6,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    height: 48,
-  },
-  inputFocused: {
-    borderColor: '#FF8A3D',
-    backgroundColor: '#FFFFFF',
-  },
-  inputError: {
-    borderColor: '#EF4444',
-  },
-  inputIcon: {
-    fontSize: 16,
-    marginRight: 10,
-  },
-  textInput: {
-    flex: 1,
     fontSize: 14,
-    color: '#1F2937',
+  },
+  companionHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  avatarGlowCircle: {
+    width: 105,
+    height: 105,
+    borderRadius: 52.5,
+    backgroundColor: 'rgba(255, 237, 160, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#111827',
+    textAlign: 'center',
+  },
+  headerSubtitle: {
+    fontSize: 13,
     fontWeight: '500',
-  },
-  rightIconBtn: {
-    padding: 4,
-  },
-  errorText: {
-    color: '#EF4444',
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 4,
-    marginLeft: 2,
+    color: '#6B7280',
+    marginTop: 3,
+    textAlign: 'center',
   },
   errorBanner: {
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.3)',
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     marginBottom: 14,
     alignItems: 'center',
   },
   errorBannerText: {
     color: '#DC2626',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  fieldGroup: {
+    marginBottom: 14,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 6,
+  },
+  inputBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EEF2FF',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 48,
+  },
+  inputBoxDark: {
+    backgroundColor: '#1F2937',
+  },
+  inputLeftIcon: {
+    fontSize: 16,
+    marginRight: 10,
+  },
+  inputControl: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '600',
+    paddingVertical: 8,
+    ...Platform.select({
+      web: {
+        outlineStyle: 'none',
+      },
+    }),
+  },
+  errorLine: {
+    color: '#EF4444',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 4,
   },
   optionsRow: {
     flexDirection: 'row',
@@ -661,14 +652,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     marginTop: 2,
   },
-  checkboxRow: {
+  checkboxTouch: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  checkbox: {
+  checkboxBox: {
     width: 18,
     height: 18,
-    borderRadius: 5,
+    borderRadius: 4,
     borderWidth: 1.5,
     borderColor: '#D1D5DB',
     marginRight: 8,
@@ -676,74 +667,75 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
   },
-  checkboxChecked: {
+  checkboxBoxChecked: {
     backgroundColor: '#FF8A3D',
     borderColor: '#FF8A3D',
   },
-  checkmark: {
+  checkMarkSymbol: {
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: 'bold',
   },
-  checkboxLabel: {
+  checkboxText: {
     fontSize: 12,
     color: '#4B5563',
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  termsLink: {
-    color: '#FF8A3D',
-    fontWeight: '700',
-  },
-  forgotText: {
+  forgotPassLink: {
     fontSize: 12,
     color: '#FF8A3D',
     fontWeight: '700',
   },
-  submitBtnGradient: {
-    height: 50,
+  submitBtnContainer: {
     borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    overflow: 'hidden',
+    marginTop: 4,
     shadowColor: '#FF8A3D',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 4,
   },
-  submitBtnText: {
+  submitGradientPill: {
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+  },
+  submitBtnLabel: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '800',
   },
-  dividerRow: {
+  dividerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     marginVertical: 18,
   },
-  dividerLine: {
+  lineDivider: {
     flex: 1,
     height: 1,
     backgroundColor: '#E5E7EB',
   },
-  dividerText: {
+  dividerLabelText: {
     fontSize: 11,
     color: '#9CA3AF',
     fontWeight: '600',
     marginHorizontal: 10,
   },
-  socialRow: {
+  socialButtonsRow: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 18,
+    marginBottom: 16,
   },
-  socialBtn: {
+  socialPillBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     height: 46,
     borderRadius: 16,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: '#E5E7EB',
     backgroundColor: '#FFFFFF',
     shadowColor: '#000',
@@ -752,26 +744,26 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 1,
   },
-  socialIcon: {
-    fontSize: 16,
-    marginRight: 8,
+  socialPillBtnDark: {
+    backgroundColor: '#1F2937',
+    borderColor: '#374151',
   },
-  socialBtnText: {
+  socialPillLabel: {
     fontSize: 13,
     fontWeight: '700',
     color: '#374151',
   },
-  switchRow: {
+  bottomSwitchRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 4,
   },
-  switchText: {
+  bottomSwitchPrompt: {
     fontSize: 13,
     color: '#6B7280',
   },
-  switchLink: {
+  bottomSwitchLink: {
     fontSize: 13,
     color: '#FF8A3D',
     fontWeight: '800',

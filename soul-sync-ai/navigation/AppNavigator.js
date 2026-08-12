@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View, Text, Platform } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
@@ -50,13 +50,14 @@ function MainTabs() {
           backgroundColor: THEME.colors.cardBackgroundSolid,
           borderTopWidth: 1,
           borderTopColor: THEME.colors.border,
-          height: 60,
-          paddingBottom: 8,
+          height: Platform.OS === 'ios' ? 92 : 80,
+          paddingBottom: Platform.OS === 'ios' ? 28 : 16,
           paddingTop: 8,
         },
         tabBarLabelStyle: {
           fontSize: 11,
           fontFamily: THEME.fonts.medium,
+          marginTop: 2,
         }
       })}
     >

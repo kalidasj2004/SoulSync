@@ -63,10 +63,26 @@ const detectLanguage = (text, requestedLang) => {
   return requestedLang;
 };
 
+// Strips emojis and pictographs so the speech engine doesn't read them out loud
+const stripEmojis = (text) => {
+  if (!text) return '';
+  try {
+    // Modern Unicode Property Escape matches all emojis, symbols, and pictographs
+    return text.replace(/\p{Extended_Pictographic}/gu, '').replace(/\u200D/g, '').trim();
+  } catch (e) {
+    // Fallback for older JS engines
+    return text.replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, '').trim();
+  }
+};
+
 export const speakText = async (text, languageCode = 'en', onStart, onDone) => {
   if (!text?.trim()) { if (onDone) onDone(); return; }
 
-  const detectedLang = detectLanguage(text, languageCode);
+  // Clean the text by removing emojis
+  const cleanText = stripEmojis(text);
+  if (!cleanText.trim()) { if (onDone) onDone(); return; }
+
+  const detectedLang = detectLanguage(cleanText, languageCode);
   const locale = LOCALE_MAP[detectedLang] || 'en-US';
   console.log(`[Speech] Speak request. Target lang: ${languageCode} | Detected: ${detectedLang} | Locale: ${locale}`);
 
@@ -83,8 +99,8 @@ export const speakText = async (text, languageCode = 'en', onStart, onDone) => {
     // Unlock audio (safari/chrome/edge autoplay)
     await unlockAudio();
 
-    // Prepare sentence chunks
-    const chunks = splitIntoSentences(text);
+    // Prepare sentence chunks from clean text (without emojis)
+    const chunks = splitIntoSentences(cleanText);
     console.log(`[Speech] Split text into ${chunks.length} sentence chunks.`);
 
     speechQueue = chunks;
@@ -148,7 +164,7 @@ export const speakText = async (text, languageCode = 'en', onStart, onDone) => {
     // Native iOS / Android
     try {
       await Speech.stop();
-      Speech.speak(text, {
+      Speech.speak(cleanText, {
         language: locale,
         pitch: 1.0,
         rate: 0.92,

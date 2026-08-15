@@ -30,7 +30,14 @@ export default function Header({
           <View style={styles.placeholder} />
         )}
 
-        <Text style={[styles.title, titleStyle]} numberOfLines={1}>
+        <Text 
+          style={[
+            styles.title, 
+            title === 'SoulSync AI' && styles.brandTitle, 
+            titleStyle
+          ]} 
+          numberOfLines={1}
+        >
           {title}
         </Text>
 
@@ -79,6 +86,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     flex: 1,
     marginHorizontal: THEME.sizes.sm,
+  },
+  brandTitle: {
+    fontFamily: Platform.OS === 'web' ? 'Satisfy, cursive' : 'System',
+    fontSize: Platform.OS === 'web' ? 28 : 22,
+    fontWeight: 'normal',
+    color: '#1E293B',
+    transform: [{ scaleY: 1.05 }], // Slight stretch to mimic calligraphy
   },
   leftAction: {
     minWidth: 40,

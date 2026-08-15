@@ -317,9 +317,7 @@ export default function AIChatScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      let sentiment = analyzeSentiment(userText);
-      try { const gs = await getSentimentFromGemini(userText); if (gs) sentiment = gs; } catch (_) {}
-
+      const sentiment = analyzeSentiment(userText);
       const userMsg = { user_id: user.id, sender: 'user', message: userText, sentiment };
       const { data: saved } = await supabase.from('chat_messages').insert(userMsg).select().single();
       setChatHistory(prev => [...prev, saved || { ...userMsg, id: Date.now().toString(), created_at: new Date().toISOString() }]);

@@ -28,85 +28,137 @@ const unlockAudio = async () => {
   }
 };
 
+// Queue state for Web Speech API chunking
+let speechQueue = [];
+let currentQueueIndex = 0;
+let userCancelled = false;
 let activeUtterance = null;
 let isSpeaking = false;
+
+// Splits text by punctuation (. ! ?) while preserving the punctuation
+const splitIntoSentences = (text) => {
+  if (!text) return [];
+  // Match sentences ending with ., !, or ? and filter empty strings
+  const sentences = text.match(/[^.!?]+[.!?]*/g) || [text];
+  return sentences
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+};
+
+// Automatically detect the script/language of the response text
+const detectLanguage = (text, requestedLang) => {
+  // Malayalam script Unicode block: 0D00 to 0D7F
+  if (/[\u0D00-\u0D7F]/.test(text)) {
+    return 'ml';
+  }
+  // Hindi/Devanagari script Unicode block: 0900 to 097F
+  if (/[\u0900-\u097F]/.test(text)) {
+    return 'hi';
+  }
+  // If the text contains only Latin (English) characters, read it as English
+  // even if Malayalam was requested (preventing reading English with a Malayalam accent).
+  if (/^[A-Za-z0-9\s.,!?'"()#@*&%-]+$/.test(text.replace(/[\u0000-\u007F]/g, ''))) {
+    return 'en';
+  }
+  return requestedLang;
+};
 
 export const speakText = async (text, languageCode = 'en', onStart, onDone) => {
   if (!text?.trim()) { if (onDone) onDone(); return; }
 
-  const locale = LOCALE_MAP[languageCode] || 'en-US';
-  console.log('[Speech] Speak request:', text.slice(0, 40));
+  const detectedLang = detectLanguage(text, languageCode);
+  const locale = LOCALE_MAP[detectedLang] || 'en-US';
+  console.log(`[Speech] Speak request. Target lang: ${languageCode} | Detected: ${detectedLang} | Locale: ${locale}`);
 
   if (Platform.OS === 'web') {
     const synth = window?.speechSynthesis;
     if (!synth) { if (onDone) onDone(); return; }
 
-    // Unlock audio context
+    // Cancel current play state
+    userCancelled = true;
+    synth.cancel();
+    isSpeaking = false;
+    await new Promise(r => setTimeout(r, 200));
+
+    // Unlock audio (safari/chrome/edge autoplay)
     await unlockAudio();
 
-    // Cancel previous speech
-    synth.cancel();
-    
-    // DELAY: Wait 250ms after cancel before creating new utterance to prevent browser cancellation races!
-    await new Promise(r => setTimeout(r, 250));
+    // Prepare sentence chunks
+    const chunks = splitIntoSentences(text);
+    console.log(`[Speech] Split text into ${chunks.length} sentence chunks.`);
 
-    activeUtterance = new SpeechSynthesisUtterance(text);
-    activeUtterance.lang = locale;
-    activeUtterance.rate = 0.88;
-    activeUtterance.pitch = 1.05;
-    activeUtterance.volume = 1.0;
+    speechQueue = chunks;
+    currentQueueIndex = 0;
+    userCancelled = false;
 
     // Pick best matching voice
     const voices = synth.getVoices();
-    const match =
+    const voiceMatch =
       voices.find(v => v.lang === locale && v.localService) ||
       voices.find(v => v.lang === locale) ||
       voices.find(v => v.lang.startsWith('en'));
-    if (match) activeUtterance.voice = match;
 
-    let finished = false;
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      isSpeaking = false;
-      activeUtterance = null;
-      if (onDone) onDone();
+    // Recursive player
+    const playNextChunk = () => {
+      if (userCancelled || currentQueueIndex >= speechQueue.length) {
+        console.log('[Speech] Playback queue completed or stopped');
+        isSpeaking = false;
+        activeUtterance = null;
+        if (onDone) onDone();
+        return;
+      }
+
+      const chunkText = speechQueue[currentQueueIndex];
+      console.log(`[Speech] Speaking chunk ${currentQueueIndex + 1}/${speechQueue.length}:`, chunkText.slice(0, 30));
+
+      activeUtterance = new SpeechSynthesisUtterance(chunkText);
+      activeUtterance.lang = locale;
+      activeUtterance.rate = 0.88;
+      activeUtterance.pitch = 1.05;
+      activeUtterance.volume = 1.0;
+
+      if (voiceMatch) activeUtterance.voice = voiceMatch;
+
+      activeUtterance.onstart = () => {
+        isSpeaking = true;
+        // Trigger onStart callback only on the very first sentence chunk
+        if (currentQueueIndex === 0 && onStart) {
+          onStart();
+        }
+      };
+
+      activeUtterance.onend = () => {
+        currentQueueIndex++;
+        playNextChunk();
+      };
+
+      activeUtterance.onerror = (e) => {
+        console.warn('[Speech] Chunk playback error:', e.error);
+        currentQueueIndex++;
+        playNextChunk();
+      };
+
+      synth.speak(activeUtterance);
     };
 
-    activeUtterance.onstart = () => {
-      isSpeaking = true;
-      console.log('[Speech] ▶ Active');
-      if (onStart) onStart();
-    };
+    // Start playing the first chunk
+    playNextChunk();
 
-    activeUtterance.onend = () => {
-      console.log('[Speech] ✅ Finished');
-      finish();
-    };
-
-    activeUtterance.onerror = (e) => {
-      console.warn('[Speech] ⚠ Error:', e.error);
-      finish();
-    };
-
-    // Chrome/Edge bug: pauses after ~15 sec — keep alive
-    const keepAlive = setInterval(() => {
-      if (!synth.speaking) { clearInterval(keepAlive); return; }
-      synth.pause();
-      window.requestAnimationFrame(() => synth.resume());
-    }, 12000);
-
-    // Override handlers to clean up keepAlive
-    const origFinish = finish;
-    activeUtterance.onend = () => { clearInterval(keepAlive); console.log('[Speech] ✅ Finished'); origFinish(); };
-    activeUtterance.onerror = (e) => { clearInterval(keepAlive); console.warn('[Speech] ⚠ Error:', e.error); origFinish(); };
-
-    synth.speak(activeUtterance);
   } else {
+    // Native iOS / Android
     try {
       await Speech.stop();
-      Speech.speak(text, { language: locale, pitch: 1.0, rate: 0.92, onStart, onDone, onStopped: onDone, onerror: onDone });
+      Speech.speak(text, {
+        language: locale,
+        pitch: 1.0,
+        rate: 0.92,
+        onStart,
+        onDone,
+        onStopped: onDone,
+        onError: onDone
+      });
     } catch (e) {
+      console.error('[Speech] Native error:', e);
       if (onDone) onDone();
     }
   }
@@ -115,13 +167,17 @@ export const speakText = async (text, languageCode = 'en', onStart, onDone) => {
 export const stopSpeech = async () => {
   try {
     isSpeaking = false;
+    userCancelled = true;
+    speechQueue = [];
     activeUtterance = null;
     if (Platform.OS === 'web' && typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     } else {
       await Speech.stop();
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error('[Speech] Stop error:', e);
+  }
 };
 
 export const preloadVoices = () => {

@@ -400,10 +400,9 @@ export default function AIChatScreen() {
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
       if (!uri) throw new Error('Audio empty');
-      const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
       const ext = uri.split('.').pop() || 'm4a';
       const mime = `audio/${ext === 'm4a' ? 'x-m4a' : ext}`;
-      const transcript = await transcribeAudioWithGemini(b64, mime);
+      const transcript = await transcribeAudioWithGemini(uri, mime);
       if (!transcript?.trim()) { Alert.alert('No speech detected', 'Try again.'); setCompanionMood('idle'); return; }
       await processUserMessage(transcript.trim());
     } catch (err) { Alert.alert('Transcription Error', err.message); setCompanionMood('idle'); }

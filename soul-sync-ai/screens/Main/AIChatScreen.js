@@ -319,24 +319,42 @@ export default function AIChatScreen() {
 
       const sentiment = analyzeSentiment(userText);
       const userMsg = { user_id: user.id, sender: 'user', message: userText, sentiment };
-      const { data: saved } = await supabase.from('chat_messages').insert(userMsg).select().single();
-      setChatHistory(prev => [...prev, saved || { ...userMsg, id: Date.now().toString(), created_at: new Date().toISOString() }]);
-
-      // Thinking state
+      
+      // INSTANT UI UPDATE: Show user message and transition companion to thinking
+      const tempUserMsgId = Date.now().toString();
+      setChatHistory(prev => [...prev, { ...userMsg, id: tempUserMsgId, created_at: new Date().toISOString() }]);
       setCompanionMood('thinking');
       setShowTypingIndicator(true);
 
+      // FIRE-AND-FORGET: Save user message to Supabase in the background
+      supabase.from('chat_messages').insert(userMsg).then(({ data: saved }) => {
+        if (saved) {
+          // Replace temp local message with the official database row
+          setChatHistory(prev => prev.map(m => m.id === tempUserMsgId ? saved : m));
+        }
+      }).catch(err => console.log('Background save user msg error:', err));
+
+      // Call Gemini immediately (extremely fast routing)
       const aiReply = await generateChatResponse(userText, chatHistory);
-      await new Promise(r => setTimeout(r, 550));
+      
+      // Instant transition out of thinking mode
       setShowTypingIndicator(false);
 
       const aiMsg = { user_id: user.id, sender: 'assistant', message: aiReply, sentiment };
-      const { data: savedAi } = await supabase.from('chat_messages').insert(aiMsg).select().single();
-      const finalAiMsg = savedAi || { ...aiMsg, id: (Date.now() + 1).toString(), created_at: new Date().toISOString() };
-      setChatHistory(prev => [...prev, finalAiMsg]);
+      const tempAiMsgId = (Date.now() + 1).toString();
+      
+      // INSTANT UI UPDATE: Show AI reply and start speaking
+      setChatHistory(prev => [...prev, { ...aiMsg, id: tempAiMsgId, created_at: new Date().toISOString() }]);
       setLatestAiMessage(aiReply);
 
-      // Set companion emotion
+      // FIRE-AND-FORGET: Save AI message to Supabase in the background
+      supabase.from('chat_messages').insert(aiMsg).then(({ data: savedAi }) => {
+        if (savedAi) {
+          setChatHistory(prev => prev.map(m => m.id === tempAiMsgId ? savedAi : m));
+        }
+      }).catch(err => console.log('Background save AI msg error:', err));
+
+      // Trigger companion emotion and speech
       let mood = 'listening', gesture = 'idle';
       if (sentiment === 'happy') { mood = 'happy'; gesture = 'wave'; }
       else if (sentiment === 'sad' || sentiment === 'stressed') { mood = 'listening'; gesture = 'chest'; }
@@ -348,7 +366,12 @@ export default function AIChatScreen() {
       setCompanionMood(mood);
       setCompanionGesture(gesture);
       setIsAiSpeaking(true);
-      await speakText(aiReply, language, () => setIsAiSpeaking(true), () => { setIsAiSpeaking(false); setCompanionMood(mood); setCompanionGesture('idle'); });
+      
+      await speakText(aiReply, language, () => setIsAiSpeaking(true), () => { 
+        setIsAiSpeaking(false); 
+        setCompanionMood(mood); 
+        setCompanionGesture('idle'); 
+      });
 
     } catch (e) {
       setShowTypingIndicator(false);

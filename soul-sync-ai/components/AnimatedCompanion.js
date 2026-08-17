@@ -27,11 +27,12 @@ export default function AnimatedCompanion({
   return (
     <View style={[styles.container, { width: lottieWidth, height: lottieHeight }]}>
       <LottieView
+        key={speaking ? 'speaking-active' : 'speaking-idle'}
         ref={lottieRef}
         source={require('../assets/mascot.json')}
         style={styles.lottie}
         autoPlay={speaking}
-        loop
+        loop={speaking}
         speed={1.0}
         resizeMode="contain"
       />

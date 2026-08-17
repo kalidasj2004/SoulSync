@@ -164,14 +164,44 @@ export const speakText = async (text, languageCode = 'en', onStart, onDone) => {
     // Native iOS / Android
     try {
       await Speech.stop();
-      Speech.speak(cleanText, {
-        language: locale,
-        pitch: 1.0,
-        rate: 0.92,
-        onStart,
-        onDone,
-        onStopped: onDone,
-        onError: onDone
+      if (onStart) onStart();
+
+      await new Promise((resolve) => {
+        const wordCount = cleanText.split(/\s+/).length;
+        const estimatedDuration = Math.max(1500, wordCount * 320);
+        let finished = false;
+
+        const handleFinish = () => {
+          if (!finished) {
+            finished = true;
+            if (onDone) onDone();
+            resolve();
+          }
+        };
+
+        const timer = setTimeout(handleFinish, estimatedDuration);
+
+        Speech.speak(cleanText, {
+          language: locale,
+          pitch: 1.0,
+          rate: 0.92,
+          onStart: () => {
+            if (onStart) onStart();
+          },
+          onDone: () => {
+            clearTimeout(timer);
+            handleFinish();
+          },
+          onStopped: () => {
+            clearTimeout(timer);
+            handleFinish();
+          },
+          onError: (e) => {
+            console.warn('[Speech] Native speech error:', e);
+            clearTimeout(timer);
+            handleFinish();
+          }
+        });
       });
     } catch (e) {
       console.error('[Speech] Native error:', e);

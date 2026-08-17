@@ -421,8 +421,8 @@ export default function AIChatScreen() {
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
       if (!uri) throw new Error('Audio empty');
-      const ext = uri.split('.').pop() || 'm4a';
-      const mime = `audio/${ext === 'm4a' ? 'x-m4a' : ext}`;
+      const ext = uri.split('.').pop() || 'webm';
+      const mime = Platform.OS === 'web' ? 'audio/webm' : `audio/${ext === 'm4a' ? 'mp4' : ext}`;
       const transcript = await transcribeAudioWithGemini(uri, mime);
       if (!transcript?.trim()) { Alert.alert('No speech detected', 'Try again.'); setCompanionMood('idle'); return; }
       await processUserMessage(transcript.trim());

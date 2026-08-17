@@ -88,8 +88,8 @@ export const generateChatResponse = async (userMessage, history = []) => {
   console.log(`[AI Engine] Routing request to: ${isGemini ? 'Google Gemini' : 'Groq'}`);
 
   if (isGemini) {
-    // ─── GOOGLE GEMINI API ───
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
+    // ─── GOOGLE GEMINI API (Optimized for Sub-Second Speedy Replies) ───
+    const modelsToTry = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'];
     
     // Format history for Gemini contents array
     const contents = [
@@ -111,25 +111,36 @@ export const generateChatResponse = async (userMessage, history = []) => {
       parts: [{ text: userMessage }]
     });
 
-    try {
-      const response = await fetchWithRetry(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents }),
-      });
+    let lastError = null;
+    for (const modelName of modelsToTry) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+      try {
+        const response = await fetchWithRetry(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            contents,
+            generationConfig: {
+              maxOutputTokens: 150,
+              temperature: 0.7,
+            }
+          }),
+        }, 1, 300);
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error?.message || `Gemini Error: ${response.status}`);
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error?.message || `HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) return text.trim();
+      } catch (e) {
+        lastError = e;
+        console.warn(`[Gemini Model Fallback] ${modelName} failed (${e.message}), trying next model...`);
       }
-
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) throw new Error('Empty response from Gemini API');
-      return text.trim();
-    } catch (e) {
-      console.error('Gemini API Error:', e);
-      throw e;
     }
+    throw lastError || new Error('All Gemini models failed');
 
   } else {
     // ─── GROQ API (OpenAI format) ───
@@ -186,7 +197,7 @@ export const getSentimentFromGemini = async (text) => {
   const validMoods = ['happy', 'neutral', 'sad', 'stressed', 'angry'];
 
   if (isGemini) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`;
     const prompt = `Analyze the emotional sentiment of this text: "${text}". Classify it strictly as one of the following words in lowercase: happy, neutral, sad, stressed, angry. Output ONLY the single word itself.`;
     
     try {
@@ -240,25 +251,41 @@ export const transcribeAudioWithGemini = async (audioUri, mimeType) => {
   const isGemini = checkIsGemini(apiKey);
   
   if (isGemini) {
-    // ─── GOOGLE GEMINI AUDIO TRANSCRIPTION ───
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
+    // ─── GOOGLE GEMINI AUDIO TRANSCRIPTION (Multimodal Audio Model) ───
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`;
     
     try {
       let base64Data = '';
+      let cleanMime = 'audio/webm';
+
       if (Platform.OS === 'web') {
         const res = await fetch(audioUri);
         const blob = await res.blob();
+        if (!blob || blob.size === 0) {
+          console.warn('[Audio Transcription] Empty audio recording blob');
+          return '';
+        }
+        if (blob.type) {
+          cleanMime = blob.type.split(';')[0].trim();
+        }
         base64Data = await new Promise((resolve) => {
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result.split(',')[1]);
           reader.readAsDataURL(blob);
         });
       } else {
+        cleanMime = mimeType ? mimeType.split(';')[0].trim() : 'audio/mp4';
+        if (cleanMime.includes('x-m4a')) cleanMime = 'audio/mp4';
         const FileSystem = require('expo-file-system');
         base64Data = await FileSystem.readAsStringAsync(audioUri, { encoding: FileSystem.EncodingType.Base64 });
       }
 
-      const prompt = "Transcribe this audio recording exactly. Translate what is spoken into text. Output only the transcription, nothing else.";
+      if (!base64Data || base64Data.length < 50) {
+        console.warn('[Audio Transcription] Audio data too small or empty');
+        return '';
+      }
+
+      const prompt = "Transcribe this audio recording exactly. Output only the spoken text in plain text.";
       const response = await fetchWithRetry(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -266,13 +293,17 @@ export const transcribeAudioWithGemini = async (audioUri, mimeType) => {
           contents: [
             {
               parts: [
-                { inlineData: { mimeType, data: base64Data } },
+                { inlineData: { mimeType: cleanMime, data: base64Data } },
                 { text: prompt }
               ]
             }
-          ]
+          ],
+          generationConfig: {
+            maxOutputTokens: 60,
+            temperature: 0.1,
+          }
         })
-      });
+      }, 1, 200);
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error?.message || 'Failed Gemini audio transcription');

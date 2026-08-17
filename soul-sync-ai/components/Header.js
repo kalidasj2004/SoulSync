@@ -13,6 +13,8 @@ export default function Header({
 }) {
   const navigation = useNavigation();
 
+  const isBrand = title === 'SoulSync AI' || title === 'SoulSync';
+
   return (
     <SafeAreaView style={[styles.safeArea, style]}>
       <View style={styles.container}>
@@ -30,16 +32,25 @@ export default function Header({
           <View style={styles.placeholder} />
         )}
 
-        <Text 
-          style={[
-            styles.title, 
-            title === 'SoulSync AI' && styles.brandTitle, 
-            titleStyle
-          ]} 
-          numberOfLines={1}
-        >
-          {title}
-        </Text>
+        {isBrand ? (
+          <View style={styles.brandContainer}>
+            <View style={styles.brandTitleRow}>
+              <Text style={styles.brandSoulText}>SOUL</Text>
+              <Text style={styles.brandSyncText}>SYNC</Text>
+              <View style={styles.aiBadge}>
+                <Text style={styles.aiBadgeText}>AI</Text>
+              </View>
+            </View>
+            <View style={styles.subPillContainer}>
+              <View style={styles.subPillDot} />
+              <Text style={styles.subPillText}>WELLNESS COMPANION</Text>
+            </View>
+          </View>
+        ) : (
+          <Text style={[styles.title, titleStyle]} numberOfLines={1}>
+            {title}
+          </Text>
+        )}
 
         {rightComponent ? (
           <View style={styles.rightAction}>{rightComponent}</View>
@@ -55,11 +66,11 @@ const styles = StyleSheet.create({
   safeArea: {
     backgroundColor: THEME.colors.background,
     borderBottomWidth: 1,
-    borderBottomColor: THEME.colors.border,
+    borderBottomColor: 'rgba(226, 232, 240, 0.6)',
     paddingTop: Platform.OS === 'android' ? 30 : 0,
   },
   container: {
-    height: 56,
+    height: 64,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -69,30 +80,87 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(226, 232, 240, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   backText: {
-    color: THEME.colors.textPrimary,
-    fontSize: 22,
+    color: '#334155',
+    fontSize: 20,
     fontWeight: 'bold',
-    lineHeight: 22,
+    lineHeight: 20,
   },
   title: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: THEME.colors.textPrimary,
+    fontWeight: '700',
+    color: '#1E293B',
     textAlign: 'center',
     flex: 1,
     marginHorizontal: THEME.sizes.sm,
   },
-  brandTitle: {
-    fontFamily: Platform.OS === 'web' ? 'Satisfy, cursive' : 'System',
-    fontSize: Platform.OS === 'web' ? 28 : 22,
-    fontWeight: 'normal',
+  brandContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  brandSoulText: {
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: 2.5,
     color: '#1E293B',
-    transform: [{ scaleY: 1.05 }], // Slight stretch to mimic calligraphy
+    fontFamily: Platform.OS === 'web' ? "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif" : 'System',
+  },
+  brandSyncText: {
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: 2.5,
+    color: '#FF6B4A',
+    fontFamily: Platform.OS === 'web' ? "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif" : 'System',
+  },
+  aiBadge: {
+    backgroundColor: 'rgba(255, 107, 74, 0.12)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginLeft: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 74, 0.25)',
+  },
+  aiBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FF6B4A',
+    letterSpacing: 1,
+  },
+  subPillContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(226, 232, 240, 0.7)',
+  },
+  subPillDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#10B981',
+    marginRight: 4,
+  },
+  subPillText: {
+    fontSize: 8.5,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    color: '#64748B',
   },
   leftAction: {
     minWidth: 40,

@@ -141,10 +141,13 @@ export default function WellnessScreen() {
 
   return (
     <View style={styles.container}>
-      <Header title={translate('wellness', language)} />
+      <Header title={translate('wellness', language)} showBackButton />
 
       <ScrollView
+        style={styles.scrollView}
         contentContainerStyle={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled={true}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={THEME.colors.primary} />
         }
@@ -217,6 +220,9 @@ export default function WellnessScreen() {
             </View>
           ))}
         </Card>
+
+        {/* Bottom padding so last item isn't cut off */}
+        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
@@ -226,10 +232,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: THEME.colors.background,
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  scrollView: {
+    flex: 1,
+    width: '100%',
   },
   scrollContainer: {
     padding: THEME.sizes.md,
-    paddingBottom: THEME.sizes.xl,
+    paddingBottom: 60,
+    flexGrow: 1,
   },
   moodBanner: {
     marginBottom: THEME.sizes.md,

@@ -70,6 +70,57 @@ export const analyzeSentiment = (text) => {
   return 'neutral';
 };
 
+// 3. Safety Risk Detection — Three Levels: normal, concerning, high_risk
+// This function scans message text for signals of distress or self-harm intent.
+// It NEVER stores or logs raw sensitive content. It only returns a risk level string.
+export const detectSafetyRisk = (text) => {
+  if (!text || text.trim().length === 0) return 'normal';
+  const t = text.toLowerCase();
+
+  // ── HIGH RISK: Direct expressions of suicidal intent or self-harm ──
+  const highRiskPhrases = [
+    'want to die', 'want to kill myself', 'going to kill myself', 'end my life',
+    'end it all', 'take my own life', 'commit suicide', 'planning to suicide',
+    'no reason to live', 'better off dead', 'better off without me',
+    'cut myself', 'hurting myself', 'going to hurt myself', 'will harm myself',
+    'don\'t want to be alive', 'wish i was dead', 'wish i were dead',
+    'don\'t want to exist', 'tired of living', 'life is not worth',
+    'life isn\'t worth', 'overdose', 'take pills', 'hang myself',
+    // Malayalam equivalents (romanized common forms)
+    'chathukku pokanam', 'venam ennu', 'jeevitham mathiayilla',
+    'ende jeevitham theerkanam',
+  ];
+
+  // ── CONCERNING: Expressions of deep hopelessness or emotional crisis ──
+  const concerningPhrases = [
+    'can\'t go on', 'cannot go on', 'can\'t continue', 'cannot continue',
+    'can\'t take it anymore', 'cannot take it anymore', 'i give up',
+    'no point anymore', 'nothing to live for', 'feel empty inside',
+    'completely hopeless', 'lost all hope', 'nobody cares',
+    'nobody would miss me', 'no one would care', 'disappear forever',
+    'run away forever', 'feels like the end', 'don\'t see a way out',
+    'don\'t know how much longer', 'can\'t keep going',
+    'too much pain to handle', 'feel like giving up',
+    'so much pain inside', 'unbearable pain',
+  ];
+
+  for (const phrase of highRiskPhrases) {
+    if (t.includes(phrase)) {
+      return 'high_risk';
+    }
+  }
+
+  for (const phrase of concerningPhrases) {
+    if (t.includes(phrase)) {
+      return 'concerning';
+    }
+  }
+
+  return 'normal';
+};
+
+
+
 // 3. Date formatters
 export const formatDate = (dateString, locale = 'en') => {
   try {

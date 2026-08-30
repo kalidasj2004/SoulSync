@@ -161,6 +161,7 @@ export default function JournalScreen() {
     <View style={styles.container}>
       <Header 
         title={translate('journal', language)} 
+        showBackButton
         rightComponent={
           <TouchableOpacity 
             onPress={() => isEditing ? resetForm() : setIsEditing(true)}

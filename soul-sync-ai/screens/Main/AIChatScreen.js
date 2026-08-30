@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useContext } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity,
-  TextInput, Animated, Easing, Alert, Platform,
+  TextInput, Animated, Easing, Alert, Platform, Modal,
   KeyboardAvoidingView, Dimensions
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,9 +12,11 @@ import { getSupabase } from '../../services/supabase';
 import { AppContext } from '../../AppContext';
 import { THEME } from '../../utils/theme';
 import { ROUTES } from '../../navigation/RouteNames';
-import { generateChatResponse, getSentimentFromGemini, transcribeAudioWithGemini } from '../../services/gemini';
+import { generateChatResponse, getSentimentFromGemini, transcribeAudioWithGemini, generateSafetyAwareResponse, generateEmergencyResponse } from '../../services/gemini';
 import { speakText, stopSpeech, preloadVoices, testSpeech } from '../../services/speech';
-import { analyzeSentiment, MINI_ACTIVITIES } from '../../utils/helpers';
+import { analyzeSentiment, MINI_ACTIVITIES, detectSafetyRisk } from '../../utils/helpers';
+import { detectEmergency } from '../../utils/safety';
+import EmergencySupportCard from '../../components/EmergencySupportCard';
 import Header from '../../components/Header';
 import AnimatedCompanion from '../../components/AnimatedCompanion';
 
@@ -186,6 +188,15 @@ export default function AIChatScreen() {
   const [showTextInput, setShowTextInput] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
 
+  // ── Safety & Emergency Mode State ──
+  // emergencyLevel: 'normal' | 'concerning' | 'emergency'
+  const [emergencyLevel, setEmergencyLevel] = useState('normal');
+  const [isEmergencyMode, setIsEmergencyMode] = useState(false);
+  // Legacy safety mode for backward compat with old banner (now replaced by EmergencySupportCard)
+  const [isSafetyMode, setIsSafetyMode] = useState(false);
+  const [safetyRiskLevel, setSafetyRiskLevel] = useState('normal');
+  const [showGetHelpModal, setShowGetHelpModal] = useState(false);
+
   // Animations
   const scrollViewRef = useRef(null);
   const historyHeight = useRef(new Animated.Value(0)).current;
@@ -305,7 +316,7 @@ export default function AIChatScreen() {
     } catch (e) { console.log('loadChatContext error:', e.message); }
   };
 
-  /* ── Process user message ── */
+  /* ── Process user message (with Emergency Mode routing) ── */
   const processUserMessage = async (userText) => {
     if (!supabase || !userText.trim()) return;
     setLoading(true);
@@ -318,59 +329,82 @@ export default function AIChatScreen() {
       if (!user) return;
 
       const sentiment = analyzeSentiment(userText);
+
+      // ── STEP 1: SAFETY / EMERGENCY DETECTION (instant, on-device) ──
+      const level = detectEmergency(userText); // 'normal' | 'concerning' | 'emergency'
+      setEmergencyLevel(level);
+
+      // Map to legacy safety mode state for the old banner (in case both coexist)
+      setSafetyRiskLevel(level === 'emergency' ? 'high_risk' : level);
+      setIsSafetyMode(level !== 'normal');
+
+      // ── STEP 2: EMERGENCY MODE activation ──
+      if (level === 'emergency') {
+        setIsEmergencyMode(true);
+      }
+      // Do NOT auto-deactivate emergency mode — user must press "Continue Chat" to leave it
+
+      // Save user message to chat history UI immediately
       const userMsg = { user_id: user.id, sender: 'user', message: userText, sentiment };
-      
-      // INSTANT UI UPDATE: Show user message and transition companion to thinking
       const tempUserMsgId = Date.now().toString();
       setChatHistory(prev => [...prev, { ...userMsg, id: tempUserMsgId, created_at: new Date().toISOString() }]);
       setCompanionMood('thinking');
       setShowTypingIndicator(true);
 
-      // FIRE-AND-FORGET: Save user message to Supabase in the background
+      // Background save to Supabase
       supabase.from('chat_messages').insert(userMsg).then(({ data: saved }) => {
-        if (saved) {
-          // Replace temp local message with the official database row
-          setChatHistory(prev => prev.map(m => m.id === tempUserMsgId ? saved : m));
-        }
+        if (saved) setChatHistory(prev => prev.map(m => m.id === tempUserMsgId ? saved : m));
       }).catch(err => console.log('Background save user msg error:', err));
 
-      // Call Gemini immediately (extremely fast routing)
-      const aiReply = await generateChatResponse(userText, chatHistory);
-      
-      // Instant transition out of thinking mode
+      // ── STEP 3: GENERATE AI REPLY — using the right prompt for the risk level ──
+      let aiReply;
+      if (level === 'emergency') {
+        // Uses EMERGENCY_AI_PROMPT — short, compassionate, non-judgmental
+        aiReply = await generateEmergencyResponse(userText);
+      } else {
+        // Passes 'concerning' or 'normal' — uses appropriate prompt
+        aiReply = await generateSafetyAwareResponse(userText, chatHistory, level);
+      }
+
       setShowTypingIndicator(false);
 
       const aiMsg = { user_id: user.id, sender: 'assistant', message: aiReply, sentiment };
       const tempAiMsgId = (Date.now() + 1).toString();
-      
-      // INSTANT UI UPDATE: Show AI reply and start speaking
+
       setChatHistory(prev => [...prev, { ...aiMsg, id: tempAiMsgId, created_at: new Date().toISOString() }]);
       setLatestAiMessage(aiReply);
 
-      // FIRE-AND-FORGET: Save AI message to Supabase in the background
+      // Background save AI message
       supabase.from('chat_messages').insert(aiMsg).then(({ data: savedAi }) => {
-        if (savedAi) {
-          setChatHistory(prev => prev.map(m => m.id === tempAiMsgId ? savedAi : m));
-        }
+        if (savedAi) setChatHistory(prev => prev.map(m => m.id === tempAiMsgId ? savedAi : m));
       }).catch(err => console.log('Background save AI msg error:', err));
 
-      // Trigger companion emotion and speech
+      // ── STEP 4: COMPANION emotion ──
       let mood = 'listening', gesture = 'idle';
-      if (sentiment === 'happy') { mood = 'happy'; gesture = 'wave'; }
-      else if (sentiment === 'sad' || sentiment === 'stressed') { mood = 'listening'; gesture = 'chest'; }
-      else if (sentiment === 'angry') { mood = 'thinking'; }
+      if (level === 'emergency') {
+        mood = 'listening'; gesture = 'chest'; // hand-on-heart, most empathetic
+      } else if (level === 'concerning') {
+        mood = 'listening'; gesture = 'idle';
+      } else if (sentiment === 'happy') {
+        mood = 'happy'; gesture = 'wave';
+      } else if (sentiment === 'sad' || sentiment === 'stressed') {
+        mood = 'listening'; gesture = 'chest';
+      } else if (sentiment === 'angry') {
+        mood = 'thinking';
+      }
       const lr = aiReply.toLowerCase();
-      if (lr.includes('breathe') || lr.includes('exercise') || lr.includes('below')) gesture = 'point';
-      else if (lr.includes('hello') || lr.includes('hi ')) gesture = 'wave';
+      if (lr.includes('breathe') && level === 'normal') gesture = 'point';
+      else if ((lr.includes('hello') || lr.includes('hi ')) && level === 'normal') gesture = 'wave';
 
       setCompanionMood(mood);
       setCompanionGesture(gesture);
       setIsAiSpeaking(true);
-      
-      await speakText(aiReply, language, () => setIsAiSpeaking(true), () => { 
-        setIsAiSpeaking(false); 
-        setCompanionMood(mood); 
-        setCompanionGesture('idle'); 
+
+      // ── STEP 5: SPEAK the AI reply (companion mouth animates) ──
+      await speakText(aiReply, language, () => setIsAiSpeaking(true), () => {
+        setIsAiSpeaking(false);
+        setCompanionMood(mood);
+        setCompanionGesture('idle');
       });
 
     } catch (e) {
@@ -380,6 +414,12 @@ export default function AIChatScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  /* ── User pressed "Continue Talking with SoulSync" on the Emergency Card ── */
+  const handleContinueFromEmergency = () => {
+    // Keep emergency mode visible but allow the user to keep typing
+    setShowTextInput(true);
   };
 
   const handleSendText = async () => {
@@ -485,25 +525,47 @@ export default function AIChatScreen() {
   /* ─── Render State Label ─── */
   const renderStateUI = () => {
     if (convState === 'listening') return (
-      <View style={styles.stateRow}>
-        <View style={styles.stateDotRed} />
-        <Text style={[styles.stateText, { color: '#EF4444' }]}>Listening to you...</Text>
-      </View>
+      <LinearGradient
+        colors={['rgba(239,68,68,0.10)', 'rgba(239,68,68,0.04)']}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+        style={styles.statePill}
+      >
+        <View style={styles.statePulsingDot}>
+          <View style={styles.stateDotInner} />
+        </View>
+        <Text style={[styles.statePillText, { color: '#DC2626' }]}>Listening to you...</Text>
+      </LinearGradient>
     );
     if (convState === 'thinking') return (
-      <View style={styles.stateRow}>
+      <LinearGradient
+        colors={['rgba(109,40,217,0.10)', 'rgba(99,102,241,0.04)']}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+        style={styles.statePill}
+      >
         <ThinkingDots />
-        <Text style={[styles.stateText, { marginLeft: 8 }]}>Thinking...</Text>
-      </View>
+        <Text style={[styles.statePillText, { color: '#5B21B6', marginLeft: 8 }]}>Thinking...</Text>
+      </LinearGradient>
     );
     if (convState === 'speaking') return (
-      <View style={styles.stateRow}>
+      <LinearGradient
+        colors={['rgba(109,40,217,0.12)', 'rgba(79,70,229,0.05)']}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+        style={styles.statePill}
+      >
         <SpeakingWave isActive={true} />
-        <Text style={[styles.stateText, { marginLeft: 8, color: '#6D28D9' }]}>Speaking...</Text>
-      </View>
+        <Text style={[styles.statePillText, { color: '#4F46E5', marginLeft: 8 }]}>Speaking...</Text>
+      </LinearGradient>
     );
     if (breathingActive) return (
-      <Text style={styles.breathingLabel}>{breathingText}</Text>
+      <LinearGradient
+        colors={['rgba(109,40,217,0.10)', 'rgba(99,102,241,0.04)']}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+        style={styles.statePill}
+      >
+        <Text style={[styles.statePillText, { color: '#6D28D9', fontSize: 16, fontWeight: '700' }]}>
+          {breathingText}
+        </Text>
+      </LinearGradient>
     );
     return null;
   };
@@ -527,6 +589,75 @@ export default function AIChatScreen() {
         style={styles.header}
         titleStyle={styles.headerTitle}
       />
+
+      {/* ── EMERGENCY SUPPORT CARD (only for life-threatening messages) ── */}
+      {isEmergencyMode && (
+        <EmergencySupportCard
+          visible={isEmergencyMode}
+          onContinueChat={handleContinueFromEmergency}
+        />
+      )}
+
+      {/* ── SUBTLE CONCERN BANNER (for concerning messages, not full emergency) ── */}
+      {!isEmergencyMode && isSafetyMode && (
+        <TouchableOpacity
+          onPress={() => setShowGetHelpModal(true)}
+          activeOpacity={0.85}
+          style={[styles.safetyBanner, styles.safetyBannerConcerning]}
+        >
+          <Text style={styles.safetyBannerEmoji}>💙</Text>
+          <Text style={styles.safetyBannerText}>
+            It's okay to reach out. Tap to see support options.
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {/* ── GET HELP MODAL (for the concerning banner) ── */}
+      <Modal
+        visible={showGetHelpModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowGetHelpModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>💜 You're not alone</Text>
+            <Text style={styles.modalSubtitle}>
+              Reaching out takes courage. Here are people ready to help:
+            </Text>
+            {[
+              { name: 'iCall (India)', number: '9152987821', emoji: '📞', note: 'Free counseling Mon–Sat 8am–10pm', dial: '9152987821' },
+              { name: 'Tele-MANAS (Govt.)', number: '14416', emoji: '📞', note: 'Free govt. helpline, 24/7', dial: '14416' },
+              { name: 'KIRAN Helpline', number: '1800-599-0019', emoji: '📞', note: 'Free, 24/7, multilingual', dial: '18005990019' },
+              { name: 'Vandrevala Foundation', number: '9999 666 555', emoji: '📞', note: '24/7 crisis counseling', dial: '9999666555' },
+              { name: 'Emergency Services', number: '112', emoji: '🚨', note: 'Police / Ambulance', dial: '112' },
+            ].map((r, i) => (
+              <TouchableOpacity
+                key={i}
+                style={styles.crisisRow}
+                onPress={() => {
+                  const { Linking } = require('react-native');
+                  Linking.openURL(`tel:${r.dial}`);
+                }}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.crisisEmoji}>{r.emoji}</Text>
+                <View style={styles.crisisTextCol}>
+                  <Text style={styles.crisisName}>{r.name}</Text>
+                  <Text style={styles.crisisNumber}>{r.number}</Text>
+                  <Text style={styles.crisisNote}>{r.note}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+            <Text style={styles.modalDisclaimer}>
+              SoulSync is a wellness companion, not an emergency service.
+            </Text>
+            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowGetHelpModal(false)}>
+              <Text style={styles.modalCloseBtnText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── COMPANION STAGE ── */}
       <View style={styles.companionStage}>
@@ -679,11 +810,54 @@ const styles = StyleSheet.create({
   companionWrapper: { alignItems: 'center', justifyContent: 'center' },
 
   /* ── State Indicator ── */
-  stateIndicator: { alignItems: 'center', minHeight: 36, justifyContent: 'center', marginBottom: 2 },
+  stateIndicator: {
+    alignItems: 'center',
+    minHeight: 44,
+    justifyContent: 'center',
+    marginBottom: 4,
+    paddingHorizontal: 20,
+  },
+  statePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 18,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: 'rgba(167,139,250,0.22)',
+    gap: 8,
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  statePillText: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  // Pulsing red dot for "Listening"
+  statePulsingDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: 'rgba(239,68,68,0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stateDotInner: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+  },
+  // Legacy (kept for safety, unused)
   stateRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   stateText: { fontSize: 13, fontWeight: '600', color: '#6B7280' },
   stateDotRed: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
   breathingLabel: { fontSize: 20, fontWeight: 'bold', color: '#6D28D9', textAlign: 'center', letterSpacing: 0.3 },
+
 
   /* ── Speech Bubble ── */
   speechBubbleWrap: { marginHorizontal: 20, marginBottom: 4, alignItems: 'center' },
@@ -791,4 +965,98 @@ const styles = StyleSheet.create({
   },
   micIcon: { fontSize: 30 },
   micLabel: { fontSize: 11, color: '#6B7280', fontWeight: '600' },
+
+  /* ── Safety Banner ── */
+  safetyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 4,
+    marginTop: 2,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  safetyBannerHighRisk: {
+    backgroundColor: 'rgba(239,68,68,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.30)',
+  },
+  safetyBannerConcerning: {
+    backgroundColor: 'rgba(109,40,217,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(109,40,217,0.20)',
+  },
+  safetyBannerEmoji: { fontSize: 18 },
+  safetyBannerText: {
+    flex: 1,
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: '#374151',
+    lineHeight: 17,
+  },
+
+  /* ── Get Help Now Modal ── */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 28,
+    maxHeight: '85%',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1F2937',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  modalSubtitle: {
+    fontSize: 13.5,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  crisisRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: '#F9F5FF',
+    borderRadius: 14,
+    marginBottom: 8,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#EDE9FE',
+  },
+  crisisEmoji: { fontSize: 24, width: 30, textAlign: 'center' },
+  crisisTextCol: { flex: 1 },
+  crisisName: { fontSize: 13.5, fontWeight: '700', color: '#1F2937' },
+  crisisNumber: { fontSize: 15, fontWeight: '800', color: '#4F46E5', marginTop: 1 },
+  crisisNote: { fontSize: 11.5, color: '#6B7280', marginTop: 1 },
+  modalDisclaimer: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    lineHeight: 16,
+    marginTop: 12,
+    marginBottom: 16,
+    paddingHorizontal: 8,
+  },
+  modalCloseBtn: {
+    backgroundColor: '#4F46E5',
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  modalCloseBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
 });

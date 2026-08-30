@@ -77,6 +77,25 @@ Guidelines:
 - **CRITICAL**: Always respond in the same language and script the user uses to talk to you. If the user writes or speaks in Malayalam, reply in warm, casual, and friendly Malayalam. If they use Manglish (Malayalam written in English script), reply in natural, conversational Manglish or casual Malayalam.
 - If they are stressed, suggest breathing or other activities in a friendly way (e.g., "Hey, do you want to try a quick breathing cycle with me?").`;
 
+const CONCERNING_PROMPT = `You are SoulSync, a warm and caring wellness companion. The user is expressing feelings of deep sadness, hopelessness, or emotional pain. 
+
+Your role RIGHT NOW:
+- Respond with genuine warmth and empathy. Acknowledge their pain without minimizing it.
+- Do NOT give advice or solutions immediately.
+- Gently encourage them to open up more.
+- Softly suggest that talking to someone they trust can help.
+- Ask ONE simple caring follow-up question to keep them talking.
+- Keep your response to 2-3 short sentences maximum.
+- Do NOT claim to be a therapist, doctor, or professional.
+- Do NOT use guilt or phrases like "think about your family".
+- Respond in the same language the user used.`;
+
+// Import emergency-level prompts from the dedicated safety module
+import { EMERGENCY_AI_PROMPT, CONCERNING_AI_PROMPT } from '../utils/safety';
+
+// Keep old HIGH_RISK_PROMPT alias for backward compat with generateSafetyAwareResponse
+const HIGH_RISK_PROMPT = EMERGENCY_AI_PROMPT;
+
 /* ─── 1. DYNAMIC CHAT GENERATION (Gemini or Groq) ─── */
 export const generateChatResponse = async (userMessage, history = []) => {
   const apiKey = await getGeminiKey();
@@ -188,7 +207,158 @@ export const generateChatResponse = async (userMessage, history = []) => {
   }
 };
 
-/* ─── 2. SENTIMENT CLASSIFICATION ─── */
+/* ─── 2. SAFETY-AWARE RESPONSE GENERATION ─── */
+// Generates a Gemini response using the correct safety prompt level.
+// riskLevel: 'normal' | 'concerning' | 'high_risk'
+export const generateSafetyAwareResponse = async (userMessage, history = [], riskLevel = 'normal') => {
+  const apiKey = await getGeminiKey();
+  if (!apiKey) throw new Error('API key is missing.');
+
+  const isGemini = checkIsGemini(apiKey);
+
+  // Pick the right system prompt based on risk level
+  const promptMap = {
+    normal: SYSTEM_PROMPT,
+    concerning: CONCERNING_PROMPT,
+    high_risk: HIGH_RISK_PROMPT,
+  };
+  const chosenPrompt = promptMap[riskLevel] || SYSTEM_PROMPT;
+
+  // Limit history to last 6 messages for context (keep it focused)
+  const recentHistory = history.slice(-6);
+
+  if (isGemini) {
+    const modelsToTry = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'];
+    const contents = [
+      { role: 'user', parts: [{ text: `System Instructions: ${chosenPrompt}` }] }
+    ];
+
+    recentHistory.forEach(msg => {
+      contents.push({
+        role: msg.sender === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.message }]
+      });
+    });
+
+    contents.push({ role: 'user', parts: [{ text: userMessage }] });
+
+    let lastError = null;
+    for (const modelName of modelsToTry) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+      try {
+        const response = await fetchWithRetry(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents,
+            generationConfig: {
+              maxOutputTokens: riskLevel === 'normal' ? 150 : 200,
+              temperature: riskLevel === 'normal' ? 0.7 : 0.5,
+            }
+          }),
+        }, 1, 300);
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error?.message || `HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) return text.trim();
+      } catch (e) {
+        lastError = e;
+        console.warn(`[Safety Response Fallback] ${modelName} failed, trying next...`);
+      }
+    }
+    throw lastError || new Error('All Gemini models failed');
+  } else {
+    // Groq fallback
+    const url = 'https://api.groq.com/openai/v1/chat/completions';
+    const messages = [{ role: 'system', content: chosenPrompt }];
+    recentHistory.forEach(msg => {
+      messages.push({ role: msg.sender === 'user' ? 'user' : 'assistant', content: msg.message });
+    });
+    messages.push({ role: 'user', content: userMessage });
+    const response = await fetchWithRetry(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages, temperature: 0.5, max_tokens: 200 }),
+    });
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error('Empty response from Groq');
+    return text.trim();
+  }
+};
+
+/* ─── 3. EMERGENCY RESPONSE GENERATION ─── */
+// Called ONLY when detectEmergency() returns 'emergency'.
+// Uses EMERGENCY_AI_PROMPT to generate a short, compassionate, non-judgmental response.
+// The EmergencySupportCard handles calling services — this just gives the companion's voice.
+export const generateEmergencyResponse = async (userMessage) => {
+  const apiKey = await getGeminiKey();
+  if (!apiKey) {
+    // Fallback if no API key — return a hardcoded safe message
+    return "I'm really sorry you're going through something this painful. Please stay with me right now — you don't have to face this alone. ❤️";
+  }
+
+  const isGemini = checkIsGemini(apiKey);
+  const contents = [
+    { role: 'user', parts: [{ text: `System Instructions: ${EMERGENCY_AI_PROMPT}` }] },
+    { role: 'user', parts: [{ text: userMessage }] },
+  ];
+
+  if (isGemini) {
+    const modelsToTry = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'];
+    for (const modelName of modelsToTry) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+        const response = await fetchWithRetry(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents,
+            generationConfig: { maxOutputTokens: 120, temperature: 0.4 },
+          }),
+        }, 1, 300);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) return text.trim();
+      } catch (e) {
+        console.warn(`[Emergency Response] ${modelName} failed, trying next...`);
+      }
+    }
+  } else {
+    // Groq fallback
+    try {
+      const url = 'https://api.groq.com/openai/v1/chat/completions';
+      const response = await fetchWithRetry(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: EMERGENCY_AI_PROMPT },
+            { role: 'user', content: userMessage },
+          ],
+          temperature: 0.4,
+          max_tokens: 120,
+        }),
+      });
+      const data = await response.json();
+      const text = data.choices?.[0]?.message?.content;
+      if (text) return text.trim();
+    } catch (e) {
+      console.warn('[Emergency Response] Groq failed:', e.message);
+    }
+  }
+
+  // Final hardcoded fallback — always safe to show
+  return "I'm really sorry you're going through something this painful. Please stay with me right now — you don't have to face this alone. ❤️";
+};
+
+/* ─── 4. SENTIMENT CLASSIFICATION ─── */
 export const getSentimentFromGemini = async (text) => {
   const apiKey = await getGeminiKey();
   if (!apiKey) return 'neutral';

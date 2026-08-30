@@ -159,7 +159,7 @@ export default function MoodTrackerScreen() {
 
   return (
     <View style={styles.container}>
-      <Header title={translate('moodTracker', language)} />
+      <Header title={translate('moodTracker', language)} showBackButton />
       
       <ScrollView
         contentContainerStyle={styles.scrollContainer}

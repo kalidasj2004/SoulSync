@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { EMERGENCY_AI_PROMPT, CONCERNING_AI_PROMPT } from '../utils/safety';
 
 // Fallback keys loaded from environment
 const SYSTEM_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY || process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
@@ -90,10 +91,7 @@ Your role RIGHT NOW:
 - Do NOT use guilt or phrases like "think about your family".
 - Respond in the same language the user used.`;
 
-// Import emergency-level prompts from the dedicated safety module
-import { EMERGENCY_AI_PROMPT, CONCERNING_AI_PROMPT } from '../utils/safety';
-
-// Keep old HIGH_RISK_PROMPT alias for backward compat with generateSafetyAwareResponse
+// Keep HIGH_RISK_PROMPT alias pointing to the emergency prompt from safety.js
 const HIGH_RISK_PROMPT = EMERGENCY_AI_PROMPT;
 
 /* ─── 1. DYNAMIC CHAT GENERATION (Gemini or Groq) ─── */

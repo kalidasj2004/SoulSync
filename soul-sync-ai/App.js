@@ -11,6 +11,8 @@ import { initSupabase, getSupabase, getSupabaseConfigInfo } from './services/sup
 import { getGeminiConfigInfo } from './services/gemini';
 import AppNavigator from './navigation/AppNavigator';
 import { THEME } from './utils/theme';
+import { checkPreviousDayJournal, savePreviousDayJournal } from './utils/journalCheck';
+import DailyJournalModal from './components/DailyJournalModal';
 
 import { AppContext } from './AppContext';
 
@@ -20,6 +22,12 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [language, setLanguageState] = useState('en');
   const [appKeysSource, setAppKeysSource] = useState('System');
+
+  // ── Daily Journal Check-in State ──
+  const [journalCheckDone, setJournalCheckDone] = useState(false);
+  const [showJournalModal, setShowJournalModal] = useState(false);
+  const [journalDateInfo, setJournalDateInfo] = useState(null);
+  const [journalSubmitting, setJournalSubmitting] = useState(false);
 
   // 1. Core initialization (loads credentials and sets up listeners)
   const initializeApp = async () => {
@@ -32,14 +40,14 @@ export default function App() {
       setAppKeysSource(supInfo.source === 'Custom Settings' || gemInfo.source === 'Custom Settings' ? 'Custom Settings' : 'System');
 
       if (supabase) {
-
-
         // Get initial auth session
         const { data: { session: initialSession } } = await supabase.auth.getSession();
         setSession(initialSession);
 
         if (initialSession?.user) {
           await fetchProfile(initialSession.user.id, supabase);
+          // ── Run journal check for logged-in user ──
+          await runJournalCheck(supabase, initialSession.user.id);
         }
 
         // Set up subscription for auth changes
@@ -47,8 +55,13 @@ export default function App() {
           setSession(newSession);
           if (newSession?.user) {
             await fetchProfile(newSession.user.id, supabase);
+            // ── Re-run journal check when user logs in fresh ──
+            await runJournalCheck(supabase, newSession.user.id);
           } else {
             setProfile(null);
+            // Reset check state on logout so next login re-checks
+            setJournalCheckDone(false);
+            setShowJournalModal(false);
           }
         });
 
@@ -61,6 +74,34 @@ export default function App() {
       console.error('App initialization error:', e);
     } finally {
       setAppReady(true);
+    }
+  };
+
+  // ── Journal Check: runs once per login session ──
+  const runJournalCheck = async (supabase, userId) => {
+    if (journalCheckDone) return; // already checked this session
+    const { needed, dateInfo } = await checkPreviousDayJournal(supabase, userId);
+    setJournalDateInfo(dateInfo);
+    if (needed) {
+      setShowJournalModal(true);
+    }
+    setJournalCheckDone(true);
+  };
+
+  // ── Journal submit handler called from DailyJournalModal ──
+  const handleJournalSubmit = async ({ title, content, moodTag }) => {
+    const supabase = getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setJournalSubmitting(true);
+    try {
+      await savePreviousDayJournal(supabase, user.id, { title, content, moodTag }, journalDateInfo);
+      setShowJournalModal(false);
+    } catch (e) {
+      // Alert without blocking — user sees error but can retry
+      console.error('[JournalSubmit] Failed:', e.message);
+    } finally {
+      setJournalSubmitting(false);
     }
   };
 
@@ -223,6 +264,15 @@ export default function App() {
         <NavigationContainer>
           <AppNavigator session={session} />
         </NavigationContainer>
+
+        {/* ── Daily Journal Check-in Modal ── */}
+        {/* Renders on top of everything when the user hasn't done yesterday's journal */}
+        <DailyJournalModal
+          visible={showJournalModal}
+          dateInfo={journalDateInfo}
+          onSubmit={handleJournalSubmit}
+          submitting={journalSubmitting}
+        />
       </GestureHandlerRootView>
     </AppContext.Provider>
   );

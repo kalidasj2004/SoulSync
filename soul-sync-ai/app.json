@@ -21,7 +21,14 @@
     },
     "web": {
       "output": "single",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "SoulSync AI",
+      "shortName": "SoulSync",
+      "description": "Empathetic Emotional Support & AI Companion",
+      "themeColor": "#FF8A3D",
+      "backgroundColor": "#FAF6F0",
+      "display": "standalone",
+      "startUrl": "/"
     },
     "plugins": [
       [

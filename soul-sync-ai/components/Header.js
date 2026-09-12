@@ -1,7 +1,8 @@
-import React from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, Platform } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { THEME } from '../utils/theme';
+﻿import React from "react";
+import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, Platform } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { useNavigation } from "@react-navigation/native";
+import { THEME } from "../utils/theme";
 
 export default function Header({
   title,
@@ -12,12 +13,13 @@ export default function Header({
   titleStyle,
 }) {
   const navigation = useNavigation();
-
-  const isBrand = title === 'SoulSync AI' || title === 'SoulSync';
+  const isBrand = title === "SoulSync AI" || title === "SoulSync";
 
   return (
     <SafeAreaView style={[styles.safeArea, style]}>
       <View style={styles.container}>
+
+        {/* ── Left ── */}
         {showBackButton ? (
           <TouchableOpacity
             style={styles.backButton}
@@ -32,18 +34,36 @@ export default function Header({
           <View style={styles.placeholder} />
         )}
 
+        {/* ── Centre ── */}
         {isBrand ? (
           <View style={styles.brandContainer}>
-            <View style={styles.brandTitleRow}>
-              <Text style={styles.brandSoulText}>SOUL</Text>
-              <Text style={styles.brandSyncText}>SYNC</Text>
-              <View style={styles.aiBadge}>
-                <Text style={styles.aiBadgeText}>AI</Text>
+            <View style={styles.brandRow}>
+
+              {/* Gradient icon tile */}
+              <LinearGradient
+                colors={["#FF8A3D", "#FFD54A"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.iconTile}
+              >
+                <Text style={styles.iconEmoji}>🧠</Text>
+              </LinearGradient>
+
+              {/* Wordmark + tagline */}
+              <View style={styles.wordmarkCol}>
+                <View style={styles.wordmarkRow}>
+                  <Text style={styles.wordSoul}>Soul</Text>
+                  <Text style={styles.wordSync}>Sync</Text>
+                  <View style={styles.aiBadge}>
+                    <Text style={styles.aiBadgeText}>AI</Text>
+                  </View>
+                </View>
+                <View style={styles.taglineRow}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.taglineText}>Wellness Companion</Text>
+                </View>
               </View>
-            </View>
-            <View style={styles.subPillContainer}>
-              <View style={styles.subPillDot} />
-              <Text style={styles.subPillText}>WELLNESS COMPANION</Text>
+
             </View>
           </View>
         ) : (
@@ -52,125 +72,178 @@ export default function Header({
           </Text>
         )}
 
+        {/* ── Right ── */}
         {rightComponent ? (
           <View style={styles.rightAction}>{rightComponent}</View>
         ) : (
           <View style={styles.placeholder} />
         )}
+
       </View>
     </SafeAreaView>
   );
 }
 
+const WEB_FONT = Platform.OS === "web"
+  ? "'Inter', 'SF Pro Display', system-ui, sans-serif"
+  : "System";
+
 const styles = StyleSheet.create({
   safeArea: {
     backgroundColor: THEME.colors.background,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(226, 232, 240, 0.6)',
-    paddingTop: Platform.OS === 'android' ? 30 : 0,
+    borderBottomColor: "rgba(255,138,61,0.10)",
+    shadowColor: "#FF8A3D",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 3,
+    paddingTop: Platform.OS === "android" ? 30 : 0,
   },
   container: {
     height: 64,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: THEME.sizes.md,
   },
+
+  // Back button
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255,255,255,0.80)",
     borderWidth: 1,
-    borderColor: 'rgba(226, 232, 240, 0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderColor: "rgba(255,138,61,0.18)",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#FF8A3D",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.10,
+    shadowRadius: 4,
+    elevation: 2,
   },
   backText: {
-    color: '#334155',
-    fontSize: 20,
-    fontWeight: 'bold',
+    color: "#FF8A3D",
+    fontSize: 19,
+    fontWeight: "700",
     lineHeight: 20,
   },
+
+  // Plain screen title
   title: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1E293B',
-    textAlign: 'center',
+    fontSize: 17,
+    fontWeight: "700",
+    color: THEME.colors.textPrimary,
+    textAlign: "center",
     flex: 1,
     marginHorizontal: THEME.sizes.sm,
   },
+
+  // Brand section
   brandContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
-  brandTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
-  brandSoulText: {
+
+  // Icon tile
+  iconTile: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#FF8A3D",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  iconEmoji: {
+    fontSize: 18,
+    lineHeight: 22,
+  },
+
+  // Wordmark
+  wordmarkCol: {
+    alignItems: "flex-start",
+  },
+  wordmarkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  wordSoul: {
     fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: 2.5,
-    color: '#1E293B',
-    fontFamily: Platform.OS === 'web' ? "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif" : 'System',
+    fontWeight: "800",
+    color: "#1E293B",
+    letterSpacing: -0.4,
+    fontFamily: WEB_FONT,
   },
-  brandSyncText: {
+  wordSync: {
     fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: 2.5,
-    color: '#FF6B4A',
-    fontFamily: Platform.OS === 'web' ? "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif" : 'System',
+    fontWeight: "800",
+    color: "#FF8A3D",
+    letterSpacing: -0.4,
+    fontFamily: WEB_FONT,
   },
+
+  // AI badge
   aiBadge: {
-    backgroundColor: 'rgba(255, 107, 74, 0.12)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginLeft: 6,
+    marginLeft: 5,
+    backgroundColor: "rgba(255,138,61,0.11)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 107, 74, 0.25)',
+    borderColor: "rgba(255,138,61,0.28)",
+    borderRadius: 5,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    alignSelf: "center",
+    marginBottom: 1,
   },
   aiBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#FF6B4A',
-    letterSpacing: 1,
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#FF8A3D",
+    letterSpacing: 0.8,
   },
-  subPillContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+
+  // Tagline
+  taglineRow: {
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(226, 232, 240, 0.7)',
+    gap: 4,
   },
-  subPillDot: {
+  liveDot: {
     width: 5,
     height: 5,
-    borderRadius: 2.5,
-    backgroundColor: '#10B981',
-    marginRight: 4,
+    borderRadius: 3,
+    backgroundColor: "#10B981",
   },
-  subPillText: {
-    fontSize: 8.5,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    color: '#64748B',
+  taglineText: {
+    fontSize: 9,
+    fontWeight: "600",
+    color: "#94A3B8",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
+
+  // Slots
   leftAction: {
     minWidth: 40,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
+    alignItems: "flex-start",
+    justifyContent: "center",
   },
   rightAction: {
     minWidth: 40,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
+    alignItems: "flex-end",
+    justifyContent: "center",
   },
   placeholder: {
     width: 40,

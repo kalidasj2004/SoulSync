@@ -438,8 +438,21 @@ export default function AIChatScreen() {
     await speakText(latestAiMessage, language, () => setIsAiSpeaking(true), () => { setIsAiSpeaking(false); });
   };
 
-  /* ── Voice recording ── */
-  const handleToggleMic = async () => { isRecording ? await stopVoiceRecording() : await startVoiceRecording(); };
+  const handleStopSpeech = async () => {
+    await stopSpeech();
+    setIsAiSpeaking(false);
+    setCompanionMood('idle');
+    setCompanionGesture('idle');
+  };
+
+  /* ── Voice recording / Speech Control ── */
+  const handleToggleMic = async () => {
+    if (isAiSpeaking) {
+      await handleStopSpeech();
+      return;
+    }
+    isRecording ? await stopVoiceRecording() : await startVoiceRecording();
+  };
 
   const startVoiceRecording = async () => {
     try {
@@ -547,14 +560,19 @@ export default function AIChatScreen() {
       </LinearGradient>
     );
     if (convState === 'speaking') return (
-      <LinearGradient
-        colors={['rgba(109,40,217,0.12)', 'rgba(79,70,229,0.05)']}
-        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-        style={styles.statePill}
-      >
-        <SpeakingWave isActive={true} />
-        <Text style={[styles.statePillText, { color: '#4F46E5', marginLeft: 8 }]}>Speaking...</Text>
-      </LinearGradient>
+      <TouchableOpacity onPress={handleStopSpeech} activeOpacity={0.8}>
+        <LinearGradient
+          colors={['rgba(109,40,217,0.14)', 'rgba(79,70,229,0.06)']}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+          style={styles.statePill}
+        >
+          <SpeakingWave isActive={true} />
+          <Text style={[styles.statePillText, { color: '#4F46E5', marginLeft: 8 }]}>Speaking...</Text>
+          <View style={styles.stopPillBadge}>
+            <Text style={styles.stopPillText}>⏹ Stop</Text>
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
     );
     if (breathingActive) return (
       <LinearGradient
@@ -701,6 +719,13 @@ export default function AIChatScreen() {
             {isAiSpeaking && (
               <View style={styles.waveRow}>
                 <SpeakingWave isActive={true} />
+                <TouchableOpacity
+                  onPress={handleStopSpeech}
+                  activeOpacity={0.7}
+                  style={styles.stopSpeechBtn}
+                >
+                  <Text style={styles.stopSpeechBtnText}>⏹ Stop Voice</Text>
+                </TouchableOpacity>
               </View>
             )}
           </LinearGradient>
@@ -1059,4 +1084,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalCloseBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
+
+  // Stop Speech & Mic Speaking styles
+  stopPillBadge: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginLeft: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  stopPillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#EF4444',
+  },
+  stopSpeechBtn: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.25)',
+  },
+  stopSpeechBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  micBtnSpeaking: {
+    backgroundColor: '#EF4444',
+  },
 });

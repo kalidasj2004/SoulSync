@@ -1,15 +1,19 @@
 /**
  * components/EmergencySupportCard.js
  *
- * The Emergency Support Card that appears inside the chat when SoulSync
- * detects a life-threatening or suicidal message.
+ * Emergency Support Card displayed when SoulSync detects a life-threatening
+ * or crisis message.
  *
- * Shows:
- *   - A warm header ("You are not alone")
- *   - Three action buttons: Call Emergency Services, Trusted Contact, Continue Chat
- *   - Expandable crisis resource list
+ * Header:
+ *   🚨 YOU DON'T HAVE TO FACE THIS ALONE
  *
- * Does NOT auto-call anyone. Every action requires the user to press a button.
+ * Buttons:
+ *   [ 👤 Call Trusted Person ] -> Opens phone dialer (tel:) with saved contact
+ *   [ 📞 Get Emergency Help ]   -> Opens phone dialer (tel:112)
+ *   [ 💬 Continue Talking ]     -> Enables user input text
+ *
+ * Does NOT auto-call anyone. Does NOT send SMS or WhatsApp.
+ * Every action opens the native phone dialer for the user to explicitly confirm.
  */
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -18,13 +22,12 @@ import {
   Linking, Platform, Modal, TextInput, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { getSupabase } from '../services/supabase';
 import { CRISIS_RESOURCES } from '../utils/safety';
 
-// -- Trusted Contact mini-storage (session only, not persisted) --
-// For a proper version, this would use AsyncStorage or Supabase.
 let _trustedContact = { name: '', number: '' };
 
-export default function EmergencySupportCard({ onContinueChat, visible = true }) {
+export default function EmergencySupportCard({ onContinueChat, visible = true, userId = null }) {
   const slideAnim = useRef(new Animated.Value(60)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -32,121 +35,169 @@ export default function EmergencySupportCard({ onContinueChat, visible = true })
   const [showTrustedModal, setShowTrustedModal] = useState(false);
   const [contactName, setContactName] = useState(_trustedContact.name);
   const [contactNumber, setContactNumber] = useState(_trustedContact.number);
+  const [trustedPerson, setTrustedPerson] = useState({ name: _trustedContact.name, number: _trustedContact.number });
 
   useEffect(() => {
     if (visible) {
+      slideAnim.setValue(60);
+      fadeAnim.setValue(0);
       Animated.parallel([
-        Animated.spring(slideAnim, { toValue: 0, tension: 55, friction: 10, useNativeDriver: true }),
-        Animated.timing(fadeAnim, { toValue: 1, duration: 350, useNativeDriver: true }),
+        Animated.spring(slideAnim, { toValue: 0, tension: 55, friction: 10, useNativeDriver: false }),
+        Animated.timing(fadeAnim, { toValue: 1, duration: 350, useNativeDriver: false }),
       ]).start();
     }
-  }, [visible]);
+    loadTrustedContactFromProfile();
+  }, [visible, userId]);
+
+  const loadTrustedContactFromProfile = async () => {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const uid = userId || user?.id;
+      if (!uid) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('trusted_contact_name, trusted_contact_phone')
+        .eq('id', uid)
+        .maybeSingle();
+
+      if (profile && (profile.trusted_contact_name || profile.trusted_contact_phone)) {
+        const name = profile.trusted_contact_name || 'Trusted Person';
+        const phone = profile.trusted_contact_phone || '';
+        _trustedContact = { name, number: phone };
+        setTrustedPerson({ name, number: phone });
+        setContactName(name);
+        setContactNumber(phone);
+      }
+    } catch (e) {
+      console.log('loadTrustedContactFromProfile notice:', e.message);
+    }
+  };
 
   const callNumber = (dialable) => {
-    const url = `tel:${dialable}`;
+    if (!dialable) {
+      setShowTrustedModal(true);
+      return;
+    }
+    const cleanNumber = dialable.replace(/[^\d+]/g, '');
+    const url = `tel:${cleanNumber}`;
     Linking.canOpenURL(url).then(supported => {
       if (supported) {
         Linking.openURL(url);
       } else {
-        Alert.alert('Cannot open phone', `Please call ${dialable} manually.`);
+        Alert.alert('Open Dialer', `Please call ${cleanNumber} from your phone dialer.`);
       }
     }).catch(() => {
-      Alert.alert('Cannot open phone', `Please call ${dialable} manually.`);
+      Alert.alert('Open Dialer', `Please call ${cleanNumber} from your phone dialer.`);
     });
   };
 
   const handleCallEmergency = () => {
-    // Primary emergency action � opens 112
     callNumber('112');
   };
 
   const handleTrustedContact = () => {
-    if (_trustedContact.number.trim()) {
-      // Already have a trusted contact � call them
-      callNumber(_trustedContact.number.replace(/\s/g, ''));
+    if (trustedPerson.number) {
+      callNumber(trustedPerson.number);
     } else {
-      // Ask the user to add one
       setShowTrustedModal(true);
     }
   };
 
-  const saveTrustedContact = () => {
+  const saveTrustedContact = async () => {
     if (!contactNumber.trim()) {
-      Alert.alert('Number required', 'Please enter a phone number.');
+      Alert.alert('Number Required', 'Please enter a valid phone number.');
       return;
     }
-    _trustedContact = { name: contactName.trim(), number: contactNumber.trim() };
+    const name = contactName.trim() || 'Trusted Person';
+    const number = contactNumber.trim();
+    _trustedContact = { name, number };
+    setTrustedPerson({ name, number });
     setShowTrustedModal(false);
-    // Offer to call right away
-    Alert.alert(
-      `Call ${contactName.trim() || 'Trusted Person'}?`,
-      `Do you want to call ${contactNumber.trim()} now?`,
-      [
-        { text: 'Not now', style: 'cancel' },
-        { text: 'Call Now', onPress: () => callNumber(contactNumber.replace(/\s/g, '')) },
-      ]
-    );
+
+    // Save to profile in Supabase
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase
+            .from('profiles')
+            .update({
+              trusted_contact_name: name,
+              trusted_contact_phone: number,
+            })
+            .eq('id', user.id);
+        }
+      } catch (e) {
+        console.log('Failed saving trusted contact to profile:', e.message);
+      }
+    }
+
+    callNumber(number);
   };
 
   if (!visible) return null;
 
   return (
-    <Animated.View style={[styles.wrapper, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-      {/* Header */}
+    <Animated.View style={[styles.inlineWrapper, { transform: [{ translateY: slideAnim }], opacity: fadeAnim }]}>
       <LinearGradient
-        colors={['#FFF1F2', '#FFF7ED']}
+        colors={['#FFF5F5', '#FFEFEF', '#FFF7ED']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.card}
       >
-        {/* Top bar */}
+        {/* Header Title */}
         <View style={styles.topBar}>
-          <Text style={styles.alertDot}>??</Text>
-          <Text style={styles.cardTitle}>You are not alone</Text>
+          <Text style={styles.cardTitle}>🚨 YOU DON'T HAVE TO FACE THIS ALONE</Text>
         </View>
         <Text style={styles.cardSubtitle}>
-          Real people care about you right now. Choose what feels right:
+          Please reach out right now. Support is available for you 24/7.
         </Text>
 
-        {/* -- Primary Action Buttons -- */}
-        <TouchableOpacity style={styles.emergencyBtn} onPress={handleCallEmergency} activeOpacity={0.85}>
-          <LinearGradient colors={['#EF4444', '#DC2626']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.btnGrad}>
-            <Text style={styles.emergencyBtnIcon}>??</Text>
-            <View style={styles.btnTextCol}>
-              <Text style={styles.btnLabel}>Call Emergency Services</Text>
-              <Text style={styles.btnSub}>Tap to open dial pad � 112</Text>
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
-
+        {/* Action Button 1: Call Trusted Person */}
         <TouchableOpacity style={styles.trustedBtn} onPress={handleTrustedContact} activeOpacity={0.85}>
           <LinearGradient colors={['#7C3AED', '#5B21B6']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.btnGrad}>
-            <Text style={styles.emergencyBtnIcon}>??</Text>
+            <Text style={styles.emergencyBtnIcon}>👤</Text>
             <View style={styles.btnTextCol}>
               <Text style={styles.btnLabel}>
-                {_trustedContact.number ? `Call ${_trustedContact.name || 'Trusted Person'}` : 'Contact a Trusted Person'}
+                {trustedPerson.number ? `Call ${trustedPerson.name}` : '👤 Call Trusted Person'}
               </Text>
               <Text style={styles.btnSub}>
-                {_trustedContact.number ? _trustedContact.number : 'Tap to add someone you trust'}
+                {trustedPerson.number ? trustedPerson.number : 'Tap to call or set up your trusted person'}
               </Text>
             </View>
           </LinearGradient>
         </TouchableOpacity>
 
+        {/* Action Button 2: Get Emergency Help */}
+        <TouchableOpacity style={styles.emergencyBtn} onPress={handleCallEmergency} activeOpacity={0.85}>
+          <LinearGradient colors={['#EF4444', '#DC2626']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.btnGrad}>
+            <Text style={styles.emergencyBtnIcon}>📞</Text>
+            <View style={styles.btnTextCol}>
+              <Text style={styles.btnLabel}>📞 Get Emergency Help</Text>
+              <Text style={styles.btnSub}>Call 112 (National Emergency Number)</Text>
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {/* Action Button 3: Continue Talking */}
         <TouchableOpacity style={styles.continueBtn} onPress={onContinueChat} activeOpacity={0.85}>
           <View style={styles.continueBtnInner}>
-            <Text style={styles.emergencyBtnIcon}>??</Text>
+            <Text style={styles.emergencyBtnIcon}>💬</Text>
             <View style={styles.btnTextCol}>
-              <Text style={styles.continueBtnLabel}>Continue Talking with SoulSync</Text>
-              <Text style={styles.continueBtnSub}>I am here to listen</Text>
+              <Text style={styles.continueBtnLabel}>💬 Continue Talking</Text>
+              <Text style={styles.continueBtnSub}>I am right here with you to listen</Text>
             </View>
           </View>
         </TouchableOpacity>
 
-        {/* -- Expandable crisis helplines -- */}
+        {/* Expandable crisis helplines */}
         <TouchableOpacity onPress={() => setShowResources(r => !r)} style={styles.resourcesToggle} activeOpacity={0.7}>
           <Text style={styles.resourcesToggleText}>
-            {showResources ? '? Hide helplines' : '? See more helplines & crisis numbers'}
+            {showResources ? '▲ Hide helplines' : '▼ See more verified crisis helplines'}
           </Text>
         </TouchableOpacity>
 
@@ -165,37 +216,36 @@ export default function EmergencySupportCard({ onContinueChat, visible = true })
           </View>
         )}
 
-        {/* Disclaimer */}
         <Text style={styles.disclaimer}>
-          SoulSync is a wellness companion, not an emergency service. Please use the numbers above for immediate help.
+          SoulSync is a wellness companion. Clicking call buttons opens your phone dialer to confirm. No calls or SMS are sent automatically.
         </Text>
       </LinearGradient>
 
-      {/* -- Trusted Contact Modal -- */}
+      {/* Trusted Contact Set Up Modal */}
       <Modal visible={showTrustedModal} transparent animationType="slide" onRequestClose={() => setShowTrustedModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>?? Add a Trusted Person</Text>
+            <Text style={styles.modalTitle}>👤 Set Up Trusted Person</Text>
             <Text style={styles.modalSubtitle}>
-              This is someone you trust � a friend, family member, or counsellor. SoulSync will never contact them automatically.
+              Save someone you trust (friend, family member, or counsellor). SoulSync will never contact them automatically.
             </Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Their name (optional)"
+              placeholder="Name (e.g. Mom, Best Friend)"
               placeholderTextColor="#9CA3AF"
               value={contactName}
               onChangeText={setContactName}
             />
             <TextInput
               style={styles.modalInput}
-              placeholder="Their phone number"
+              placeholder="Phone number"
               placeholderTextColor="#9CA3AF"
               value={contactNumber}
               onChangeText={setContactNumber}
               keyboardType="phone-pad"
             />
             <TouchableOpacity style={styles.modalSaveBtn} onPress={saveTrustedContact} activeOpacity={0.85}>
-              <Text style={styles.modalSaveBtnText}>Save & Call Now</Text>
+              <Text style={styles.modalSaveBtnText}>Save & Open Phone Dialer</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowTrustedModal(false)} style={styles.modalCancelBtn} activeOpacity={0.7}>
               <Text style={styles.modalCancelText}>Cancel</Text>
@@ -208,9 +258,8 @@ export default function EmergencySupportCard({ onContinueChat, visible = true })
 }
 
 const styles = StyleSheet.create({
-  wrapper: {
-    marginHorizontal: 12,
-    marginVertical: 8,
+  inlineWrapper: {
+    marginTop: 14,
     borderRadius: 20,
     overflow: 'hidden',
     shadowColor: '#EF4444',
@@ -218,6 +267,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 16,
     elevation: 8,
+    width: '100%',
   },
   card: {
     padding: 18,
@@ -228,14 +278,26 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8,
     marginBottom: 4,
   },
-  alertDot: { fontSize: 14 },
   cardTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
-    color: '#1F2937',
+    color: '#991B1B',
+    letterSpacing: 0.2,
+    flex: 1,
+  },
+  topCloseBtn: {
+    padding: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(239,68,68,0.12)',
+  },
+  topCloseBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#991B1B',
   },
   cardSubtitle: {
     fontSize: 13,
@@ -244,7 +306,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
 
-  // -- Action buttons --
+  // Action buttons
   emergencyBtn: { borderRadius: 14, overflow: 'hidden', marginBottom: 10 },
   trustedBtn: { borderRadius: 14, overflow: 'hidden', marginBottom: 10 },
   btnGrad: {
@@ -255,7 +317,7 @@ const styles = StyleSheet.create({
     gap: 12,
     borderRadius: 14,
   },
-  emergencyBtnIcon: { fontSize: 24, width: 32, textAlign: 'center' },
+  emergencyBtnIcon: { fontSize: 22, width: 30, textAlign: 'center' },
   btnTextCol: { flex: 1 },
   btnLabel: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
   btnSub: { fontSize: 11.5, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
@@ -277,7 +339,7 @@ const styles = StyleSheet.create({
   continueBtnLabel: { fontSize: 15, fontWeight: '700', color: '#4F46E5' },
   continueBtnSub: { fontSize: 11.5, color: '#6B7280', marginTop: 2 },
 
-  // -- Resources --
+  // Resources
   resourcesToggle: { alignItems: 'center', paddingVertical: 6 },
   resourcesToggleText: { fontSize: 12.5, color: '#7C3AED', fontWeight: '600' },
   resourcesList: { marginTop: 8, gap: 8 },
@@ -306,7 +368,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
 
-  // -- Trusted Contact Modal --
+  // Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',

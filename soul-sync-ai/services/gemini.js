@@ -1,6 +1,27 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { EMERGENCY_AI_PROMPT, CONCERNING_AI_PROMPT } from '../utils/safety';
+import { EMERGENCY_AI_PROMPT, CONCERNING_AI_PROMPT, FIXED_CRISIS_RESPONSE } from '../utils/safety';
+
+// Response Sanitizer: Guards against server-side AI fallback strings containing helpline numbers
+const sanitizeAiResponse = (text) => {
+  if (!text) return text;
+  const lower = text.toLowerCase();
+  if (
+    lower.includes('1800-') ||
+    lower.includes('tele-manas') ||
+    lower.includes('kiran') ||
+    lower.includes('9152987821') ||
+    lower.includes('icall') ||
+    lower.includes('helpline') ||
+    lower.includes('emergency services') ||
+    /\b988\b/.test(lower) ||
+    /\b111\b/.test(lower)
+  ) {
+    console.log('[Safety Sanitizer] Intercepted server-side helpline text. Replacing with FIXED_CRISIS_RESPONSE.');
+    return FIXED_CRISIS_RESPONSE;
+  }
+  return text;
+};
 
 // Fallback keys loaded from environment
 const SYSTEM_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY || process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
@@ -84,8 +105,8 @@ Your role RIGHT NOW:
 - Respond with genuine warmth and empathy. Acknowledge their pain without minimizing it.
 - Do NOT give advice or solutions immediately.
 - Gently encourage them to open up more.
-- Softly suggest that talking to someone they trust can help.
-- Ask ONE simple caring follow-up question to keep them talking.
+- NEVER list phone numbers, country helplines, or numbers like 988, 111, 9152987821. Do not generate lists of emergency contacts in your text.
+- Softly ask if they would like to reach out to someone they trust.
 - Keep your response to 2-3 short sentences maximum.
 - Do NOT claim to be a therapist, doctor, or professional.
 - Do NOT use guilt or phrases like "think about your family".
@@ -262,7 +283,7 @@ export const generateSafetyAwareResponse = async (userMessage, history = [], ris
         }
         const data = await response.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) return text.trim();
+        if (text) return sanitizeAiResponse(text.trim());
       } catch (e) {
         lastError = e;
         console.warn(`[Safety Response Fallback] ${modelName} failed, trying next...`);
@@ -285,75 +306,14 @@ export const generateSafetyAwareResponse = async (userMessage, history = [], ris
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content;
     if (!text) throw new Error('Empty response from Groq');
-    return text.trim();
+    return sanitizeAiResponse(text.trim());
   }
 };
 
 /* ─── 3. EMERGENCY RESPONSE GENERATION ─── */
 // Called ONLY when detectEmergency() returns 'emergency'.
-// Uses EMERGENCY_AI_PROMPT to generate a short, compassionate, non-judgmental response.
-// The EmergencySupportCard handles calling services — this just gives the companion's voice.
 export const generateEmergencyResponse = async (userMessage) => {
-  const apiKey = await getGeminiKey();
-  if (!apiKey) {
-    // Fallback if no API key — return a hardcoded safe message
-    return "I'm really sorry you're going through something this painful. Please stay with me right now — you don't have to face this alone. ❤️";
-  }
-
-  const isGemini = checkIsGemini(apiKey);
-  const contents = [
-    { role: 'user', parts: [{ text: `System Instructions: ${EMERGENCY_AI_PROMPT}` }] },
-    { role: 'user', parts: [{ text: userMessage }] },
-  ];
-
-  if (isGemini) {
-    const modelsToTry = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'];
-    for (const modelName of modelsToTry) {
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-        const response = await fetchWithRetry(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents,
-            generationConfig: { maxOutputTokens: 120, temperature: 0.4 },
-          }),
-        }, 1, 300);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) return text.trim();
-      } catch (e) {
-        console.warn(`[Emergency Response] ${modelName} failed, trying next...`);
-      }
-    }
-  } else {
-    // Groq fallback
-    try {
-      const url = 'https://api.groq.com/openai/v1/chat/completions';
-      const response = await fetchWithRetry(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [
-            { role: 'system', content: EMERGENCY_AI_PROMPT },
-            { role: 'user', content: userMessage },
-          ],
-          temperature: 0.4,
-          max_tokens: 120,
-        }),
-      });
-      const data = await response.json();
-      const text = data.choices?.[0]?.message?.content;
-      if (text) return text.trim();
-    } catch (e) {
-      console.warn('[Emergency Response] Groq failed:', e.message);
-    }
-  }
-
-  // Final hardcoded fallback — always safe to show
-  return "I'm really sorry you're going through something this painful. Please stay with me right now — you don't have to face this alone. ❤️";
+  return FIXED_CRISIS_RESPONSE;
 };
 
 /* ─── 4. SENTIMENT CLASSIFICATION ─── */

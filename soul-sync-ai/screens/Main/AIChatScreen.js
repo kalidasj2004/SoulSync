@@ -15,7 +15,7 @@ import { ROUTES } from '../../navigation/RouteNames';
 import { generateChatResponse, getSentimentFromGemini, transcribeAudioWithGemini, generateSafetyAwareResponse, generateEmergencyResponse } from '../../services/gemini';
 import { speakText, stopSpeech, preloadVoices, testSpeech } from '../../services/speech';
 import { analyzeSentiment, MINI_ACTIVITIES, detectSafetyRisk } from '../../utils/helpers';
-import { detectEmergency } from '../../utils/safety';
+import { detectEmergency, isLifeThreateningMessage, FIXED_CRISIS_RESPONSE } from '../../utils/safety';
 import EmergencySupportCard from '../../components/EmergencySupportCard';
 import Header from '../../components/Header';
 import AnimatedCompanion from '../../components/AnimatedCompanion';
@@ -330,41 +330,55 @@ export default function AIChatScreen() {
 
       const sentiment = analyzeSentiment(userText);
 
-      // ── STEP 1: SAFETY / EMERGENCY DETECTION (instant, on-device) ──
+      // ── STEP 1: SAFETY / EMERGENCY DETECTION (instant, local) ──
       const level = detectEmergency(userText); // 'normal' | 'concerning' | 'emergency'
-      setEmergencyLevel(level);
+      const isLifeThreatening = isLifeThreateningMessage(userText);
+      setEmergencyLevel(isLifeThreatening ? 'emergency' : level);
+      setSafetyRiskLevel(isLifeThreatening ? 'high_risk' : level);
+      setIsSafetyMode(level !== 'normal' || isLifeThreatening);
 
-      // Map to legacy safety mode state for the old banner (in case both coexist)
-      setSafetyRiskLevel(level === 'emergency' ? 'high_risk' : level);
-      setIsSafetyMode(level !== 'normal');
-
-      // ── STEP 2: EMERGENCY MODE activation ──
-      if (level === 'emergency') {
+      // ── STEP 2: CRISIS / CONCERNING / LIFE-THREATENING → HARD STOP (Gemini is NEVER called) ──
+      if (isLifeThreatening || level === 'emergency' || level === 'concerning') {
         setIsEmergencyMode(true);
-      }
-      // Do NOT auto-deactivate emergency mode — user must press "Continue Chat" to leave it
 
-      // Save user message to chat history UI immediately
+        const crisisUserMsg = { user_id: user.id, sender: 'user', message: userText, sentiment };
+        const crisisUserMsgId = Date.now().toString();
+        setChatHistory(prev => [...prev, { ...crisisUserMsg, id: crisisUserMsgId, created_at: new Date().toISOString() }]);
+        supabase.from('chat_messages').insert(crisisUserMsg).catch(() => {});
+
+        const crisisAiMsg = { user_id: user.id, sender: 'assistant', message: FIXED_CRISIS_RESPONSE, sentiment: 'sad' };
+        const crisisAiMsgId = (Date.now() + 1).toString();
+        setChatHistory(prev => [...prev, { ...crisisAiMsg, id: crisisAiMsgId, created_at: new Date().toISOString() }]);
+        setLatestAiMessage(FIXED_CRISIS_RESPONSE);
+        supabase.from('chat_messages').insert(crisisAiMsg).catch(() => {});
+
+        setShowTypingIndicator(false);
+        setCompanionMood('listening');
+        setCompanionGesture('chest');
+        setIsAiSpeaking(true);
+        setLoading(false);
+
+        await speakText(FIXED_CRISIS_RESPONSE, language, () => setIsAiSpeaking(true), () => {
+          setIsAiSpeaking(false);
+          setCompanionMood('listening');
+          setCompanionGesture('idle');
+        });
+
+        return; // ← HARD STOP. Gemini is NEVER reached for life-threatening messages.
+      }
+
+      // ── STEP 3: NORMAL & CONCERNING → Call Gemini ──
       const userMsg = { user_id: user.id, sender: 'user', message: userText, sentiment };
       const tempUserMsgId = Date.now().toString();
       setChatHistory(prev => [...prev, { ...userMsg, id: tempUserMsgId, created_at: new Date().toISOString() }]);
       setCompanionMood('thinking');
       setShowTypingIndicator(true);
 
-      // Background save to Supabase
       supabase.from('chat_messages').insert(userMsg).then(({ data: saved }) => {
         if (saved) setChatHistory(prev => prev.map(m => m.id === tempUserMsgId ? saved : m));
       }).catch(err => console.log('Background save user msg error:', err));
 
-      // ── STEP 3: GENERATE AI REPLY — using the right prompt for the risk level ──
-      let aiReply;
-      if (level === 'emergency') {
-        // Uses EMERGENCY_AI_PROMPT — short, compassionate, non-judgmental
-        aiReply = await generateEmergencyResponse(userText);
-      } else {
-        // Passes 'concerning' or 'normal' — uses appropriate prompt
-        aiReply = await generateSafetyAwareResponse(userText, chatHistory, level);
-      }
+      const aiReply = await generateSafetyAwareResponse(userText, chatHistory, level);
 
       setShowTypingIndicator(false);
 
@@ -608,27 +622,7 @@ export default function AIChatScreen() {
         titleStyle={styles.headerTitle}
       />
 
-      {/* ── EMERGENCY SUPPORT CARD (only for life-threatening messages) ── */}
-      {isEmergencyMode && (
-        <EmergencySupportCard
-          visible={isEmergencyMode}
-          onContinueChat={handleContinueFromEmergency}
-        />
-      )}
-
-      {/* ── SUBTLE CONCERN BANNER (for concerning messages, not full emergency) ── */}
-      {!isEmergencyMode && isSafetyMode && (
-        <TouchableOpacity
-          onPress={() => setShowGetHelpModal(true)}
-          activeOpacity={0.85}
-          style={[styles.safetyBanner, styles.safetyBannerConcerning]}
-        >
-          <Text style={styles.safetyBannerEmoji}>💙</Text>
-          <Text style={styles.safetyBannerText}>
-            It's okay to reach out. Tap to see support options.
-          </Text>
-        </TouchableOpacity>
-      )}
+      {/* ── Contact buttons removed as requested by user ("only this no buttons for contact") ── */}
 
       {/* ── GET HELP MODAL (for the concerning banner) ── */}
       <Modal
@@ -677,82 +671,93 @@ export default function AIChatScreen() {
         </View>
       </Modal>
 
-      {/* ── COMPANION STAGE ── */}
-      <View style={styles.companionStage}>
-        <CompanionGlow
-          size={COMP_SIZE}
-          isActive={isAiSpeaking || breathingActive || isRecording}
-          color={isRecording ? '#EF4444' : '#7C3AED'}
-        />
-
-        {/* Companion — floats gently */}
-        <Animated.View style={[
-          styles.companionWrapper,
-          {
-            transform: [
-              { translateY: floatY },
-              { scale: breathingActive ? breathingScale : 1 }
-            ]
-          }
-        ]}>
-          <AnimatedCompanion
-            mood={companionMood}
-            gesture={companionGesture}
-            size={COMP_SIZE}
-            speaking={isAiSpeaking}
+      {/* ── SCROLLABLE MAIN CONTENT AREA ── */}
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
+        {/* ── COMPANION STAGE ── */}
+        <View style={styles.companionStage}>
+          <CompanionGlow
+            size={isEmergencyMode ? 150 : COMP_SIZE}
+            isActive={isAiSpeaking || breathingActive || isRecording}
+            color={isRecording ? '#EF4444' : '#7C3AED'}
           />
-        </Animated.View>
-      </View>
 
-      {/* ── STATE INDICATOR ── */}
-      <View style={styles.stateIndicator}>
-        {renderStateUI()}
-      </View>
+          {/* Companion — floats gently */}
+          <Animated.View style={[
+            styles.companionWrapper,
+            {
+              transform: [
+                { translateY: floatY },
+                { scale: breathingActive ? breathingScale : 1 }
+              ]
+            }
+          ]}>
+            <AnimatedCompanion
+              mood={companionMood}
+              gesture={companionGesture}
+              size={isEmergencyMode ? 150 : COMP_SIZE}
+              speaking={isAiSpeaking}
+            />
+          </Animated.View>
+        </View>
 
-      {/* ── SPEECH BUBBLE (current AI message) ── */}
-      {!!latestAiMessage && (
-        <Animated.View style={[styles.speechBubbleWrap, { opacity: bubbleOpacity, transform: [{ translateY: bubbleTranslate }] }]}>
-          {/* Bubble tail pointing up */}
-          <View style={styles.bubbleTailUp} />
-          <LinearGradient colors={['#EDE9FE', '#EEF2FF']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.speechBubble}>
-            <Text style={styles.speechText}>{latestAiMessage}</Text>
-            {isAiSpeaking && (
-              <View style={styles.waveRow}>
-                <SpeakingWave isActive={true} />
-                <TouchableOpacity
-                  onPress={handleStopSpeech}
-                  activeOpacity={0.7}
-                  style={styles.stopSpeechBtn}
-                >
-                  <Text style={styles.stopSpeechBtnText}>⏹ Stop Voice</Text>
-                </TouchableOpacity>
-              </View>
+        {/* ── STATE INDICATOR ── */}
+        <View style={styles.stateIndicator}>
+          {renderStateUI()}
+        </View>
+
+        {/* ── SPEECH BUBBLE (current AI message) ── */}
+        {!!latestAiMessage && (
+          <Animated.View style={[styles.speechBubbleWrap, { opacity: bubbleOpacity, transform: [{ translateY: bubbleTranslate }] }]}>
+            {/* Bubble tail pointing up */}
+            <View style={styles.bubbleTailUp} />
+            <LinearGradient colors={['#EDE9FE', '#EEF2FF']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.speechBubble}>
+              <Text style={styles.speechText}>{latestAiMessage}</Text>
+              {isAiSpeaking && (
+                <View style={styles.waveRow}>
+                  <SpeakingWave isActive={true} />
+                  <TouchableOpacity
+                    onPress={handleStopSpeech}
+                    activeOpacity={0.7}
+                    style={styles.stopSpeechBtn}
+                  >
+                    <Text style={styles.stopSpeechBtnText}>⏹ Stop Voice</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </LinearGradient>
+
+            {/* ── EMERGENCY SUPPORT CARD BUTTONS (Rendered inline right under message) ── */}
+            {(isEmergencyMode || latestAiMessage === FIXED_CRISIS_RESPONSE) && (
+              <EmergencySupportCard
+                visible={true}
+                onContinueChat={handleContinueFromEmergency}
+              />
             )}
-          </LinearGradient>
+          </Animated.View>
+        )}
+
+        {/* ── HISTORY TOGGLE ── */}
+        {chatHistory.length > 1 && (
+          <TouchableOpacity style={styles.historyToggle} onPress={toggleHistory} activeOpacity={0.75}>
+            <Text style={styles.historyToggleText}>
+              {historyOpen ? '▼' : '▲'} {chatHistory.length} messages · {historyOpen ? 'Hide' : 'View history'}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* ── COLLAPSIBLE HISTORY DRAWER ── */}
+        <Animated.View style={[styles.historyDrawer, { height: historyHeight }]}>
+          <ScrollView ref={scrollViewRef} contentContainerStyle={styles.historyContent} showsVerticalScrollIndicator={false}>
+            {chatHistory.map((item) => (
+              <View key={item.id} style={[styles.historyBubble, item.sender === 'user' ? styles.historyUser : styles.historyAi]}>
+                <Text style={[styles.historyText, item.sender === 'user' ? styles.historyTextUser : styles.historyTextAi]}>
+                  {item.sender === 'user' ? '🧑 ' : '💜 '}{item.message}
+                </Text>
+              </View>
+            ))}
+          </ScrollView>
         </Animated.View>
-      )}
-
-      {/* ── HISTORY TOGGLE ── */}
-      {chatHistory.length > 1 && (
-        <TouchableOpacity style={styles.historyToggle} onPress={toggleHistory} activeOpacity={0.75}>
-          <Text style={styles.historyToggleText}>
-            {historyOpen ? '▼' : '▲'} {chatHistory.length} messages · {historyOpen ? 'Hide' : 'View history'}
-          </Text>
-        </TouchableOpacity>
-      )}
-
-      {/* ── COLLAPSIBLE HISTORY DRAWER ── */}
-      <Animated.View style={[styles.historyDrawer, { height: historyHeight }]}>
-        <ScrollView ref={scrollViewRef} contentContainerStyle={styles.historyContent} showsVerticalScrollIndicator={false}>
-          {chatHistory.map((item) => (
-            <View key={item.id} style={[styles.historyBubble, item.sender === 'user' ? styles.historyUser : styles.historyAi]}>
-              <Text style={[styles.historyText, item.sender === 'user' ? styles.historyTextUser : styles.historyTextAi]}>
-                {item.sender === 'user' ? '🧑 ' : '💜 '}{item.message}
-              </Text>
-            </View>
-          ))}
-        </ScrollView>
-      </Animated.View>
+      </ScrollView>
 
       {/* ── QUICK ACTIONS ── */}
       <View style={styles.quickActionsBar}>

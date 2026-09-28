@@ -127,7 +127,7 @@ export const generateChatResponse = async (userMessage, history = []) => {
 
   if (isGemini) {
     // ─── GOOGLE GEMINI API (Optimized for Sub-Second Speedy Replies) ───
-    const modelsToTry = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'];
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'];
     
     // Format history for Gemini contents array
     const contents = [
@@ -247,7 +247,7 @@ export const generateSafetyAwareResponse = async (userMessage, history = [], ris
   const recentHistory = history.slice(-6);
 
   if (isGemini) {
-    const modelsToTry = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'];
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'];
     const contents = [
       { role: 'user', parts: [{ text: `System Instructions: ${chosenPrompt}` }] }
     ];
@@ -325,7 +325,7 @@ export const getSentimentFromGemini = async (text) => {
   const validMoods = ['happy', 'neutral', 'sad', 'stressed', 'angry'];
 
   if (isGemini) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
     const prompt = `Analyze the emotional sentiment of this text: "${text}". Classify it strictly as one of the following words in lowercase: happy, neutral, sad, stressed, angry. Output ONLY the single word itself.`;
     
     try {
@@ -380,7 +380,7 @@ export const transcribeAudioWithGemini = async (audioUri, mimeType) => {
   
   if (isGemini) {
     // ─── GOOGLE GEMINI AUDIO TRANSCRIPTION (Multimodal Audio Model) ───
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
     
     try {
       let base64Data = '';

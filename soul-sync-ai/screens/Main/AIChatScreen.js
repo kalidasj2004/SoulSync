@@ -15,7 +15,7 @@ import { ROUTES } from '../../navigation/RouteNames';
 import { generateChatResponse, getSentimentFromGemini, transcribeAudioWithGemini, generateSafetyAwareResponse, generateEmergencyResponse } from '../../services/gemini';
 import { speakText, stopSpeech, preloadVoices, testSpeech } from '../../services/speech';
 import { analyzeSentiment, MINI_ACTIVITIES, detectSafetyRisk } from '../../utils/helpers';
-import { detectEmergency, isLifeThreateningMessage, FIXED_CRISIS_RESPONSE, analyzeSafetyRisk } from '../../utils/safety';
+import { detectEmergency, isLifeThreateningMessage, FIXED_CRISIS_RESPONSE } from '../../utils/safety';
 import EmergencySupportCard from '../../components/EmergencySupportCard';
 import Header from '../../components/Header';
 import AnimatedCompanion from '../../components/AnimatedCompanion';
@@ -189,8 +189,10 @@ export default function AIChatScreen() {
   const [historyOpen, setHistoryOpen] = useState(false);
 
   // ── Safety & Emergency Mode State ──
+  // emergencyLevel: 'normal' | 'concerning' | 'emergency'
   const [emergencyLevel, setEmergencyLevel] = useState('normal');
   const [isEmergencyMode, setIsEmergencyMode] = useState(false);
+  // Legacy safety mode for backward compat with old banner (now replaced by EmergencySupportCard)
   const [isSafetyMode, setIsSafetyMode] = useState(false);
   const [safetyRiskLevel, setSafetyRiskLevel] = useState('normal');
   const [showGetHelpModal, setShowGetHelpModal] = useState(false);
@@ -198,23 +200,29 @@ export default function AIChatScreen() {
   // Animations
   const scrollViewRef = useRef(null);
   const historyHeight = useRef(new Animated.Value(0)).current;
-  const floatY = useRef(new Animated.Value(0)).current;
+  const floatY = useRef(new Animated.Value(0)).current; // idle floating
   const bubbleOpacity = useRef(new Animated.Value(0)).current;
   const bubbleTranslate = useRef(new Animated.Value(16)).current;
   const micPulse = useRef(new Animated.Value(1)).current;
   const inputSlide = useRef(new Animated.Value(0)).current;
 
+  // Derived conversation state
   const convState = isRecording ? 'listening' : (showTypingIndicator || loading) ? 'thinking' : isAiSpeaking ? 'speaking' : 'idle';
 
   /* ── Lifecycle ── */
   useEffect(() => {
+    // Hide parent tab navigation bar for a clean full-screen interactive mode
     const parent = navigation.getParent();
     if (parent) {
-      parent.setOptions({ tabBarStyle: { display: 'none' } });
+      parent.setOptions({
+        tabBarStyle: { display: 'none' }
+      });
     }
+
     loadChatContext();
     preloadVoices();
 
+    // Idle float loop
     const floatLoop = Animated.loop(Animated.sequence([
       Animated.timing(floatY, { toValue: -8, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       Animated.timing(floatY, { toValue: 0, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
@@ -225,6 +233,7 @@ export default function AIChatScreen() {
     return () => {
       floatLoop.stop();
       stopSpeech();
+      // Restore tab navigation bar when leaving this screen
       if (parent) {
         parent.setOptions({
           tabBarStyle: {
@@ -253,6 +262,7 @@ export default function AIChatScreen() {
     }
   }, [isRecording]);
 
+  // Animate speech bubble in when latest message changes
   useEffect(() => {
     if (latestAiMessage) {
       bubbleOpacity.setValue(0);
@@ -264,18 +274,21 @@ export default function AIChatScreen() {
     }
   }, [latestAiMessage]);
 
+  // Scroll history to bottom when open
   useEffect(() => {
     if (historyOpen && scrollViewRef.current) {
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 200);
     }
   }, [chatHistory, historyOpen]);
 
+  /* ── Text input slide toggle ── */
   const toggleTextInput = () => {
     const next = !showTextInput;
     setShowTextInput(next);
     Animated.spring(inputSlide, { toValue: next ? 1 : 0, useNativeDriver: false, tension: 80, friction: 9 }).start();
   };
 
+  /* ── History drawer toggle ── */
   const toggleHistory = () => {
     const next = !historyOpen;
     const target = next ? Math.min(SH * 0.3, 220) : 0;
@@ -283,6 +296,7 @@ export default function AIChatScreen() {
     setHistoryOpen(next);
   };
 
+  /* ── Load chat history ── */
   const loadChatContext = async () => {
     if (!supabase) return;
     try {
@@ -311,25 +325,28 @@ export default function AIChatScreen() {
     setShowTextInput(false);
 
     try {
+      // ── STEP 1: SAFETY / EMERGENCY DETECTION (instant, local, zero-network) ──
+      const risk = analyzeSafetyRisk ? analyzeSafetyRisk(userText) : 'NORMAL';
+      const level = detectEmergency(userText); // 'normal' | 'concerning' | 'emergency'
+      const isLifeThreatening = isLifeThreateningMessage(userText) || risk === 'HIGH_RISK';
+      
+      setEmergencyLevel(isLifeThreatening ? 'emergency' : level);
+      setSafetyRiskLevel(isLifeThreatening ? 'high_risk' : level);
+      setIsSafetyMode(level !== 'normal' || isLifeThreatening);
+
+      let userId = 'guest';
+      if (supabase) {
+        try {
+          const { data: { user: u } } = await supabase.auth.getUser();
+          if (u) userId = u.id;
+        } catch (e) {}
+      }
+
       const sentiment = analyzeSentiment(userText);
 
-      // ── STEP 1: SAFETY / RISK DETECTION (Instant, zero-network, local) ──
-      const risk = analyzeSafetyRisk(userText);
-
-      // ── STEP 2: HIGH_RISK OR CONCERNING → HARD STOP (Gemini is NEVER called) ──
-      if (risk === "HIGH_RISK" || risk === "CONCERNING") {
+      // ── STEP 2: CRISIS / LIFE-THREATENING → HARD STOP (Gemini is NEVER called) ──
+      if (isLifeThreatening || level === 'emergency' || risk === 'HIGH_RISK') {
         setIsEmergencyMode(true);
-        setEmergencyLevel('emergency');
-        setSafetyRiskLevel('high_risk');
-        setIsSafetyMode(true);
-
-        let userId = 'guest';
-        if (supabase) {
-          try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) userId = user.id;
-          } catch (e) {}
-        }
 
         const crisisUserMsg = { user_id: userId, sender: 'user', message: userText, sentiment };
         const crisisUserMsgId = Date.now().toString();
@@ -358,45 +375,38 @@ export default function AIChatScreen() {
           setCompanionGesture('idle');
         });
 
-        return; // ← HARD STOP. Gemini is NEVER called for HIGH_RISK messages.
+        return; // ← HARD STOP. Gemini is NEVER reached for life-threatening messages.
       }
 
-      // ── STEP 3: NORMAL → Call Gemini API ──
-      let user = null;
-      if (supabase) {
-        try {
-          const { data: { user: u } } = await supabase.auth.getUser();
-          user = u;
-        } catch (e) {}
-      }
-      const userId = user ? user.id : 'guest';
-
+      // ── STEP 3: NORMAL & CONCERNING → Call Gemini API ──
       const userMsg = { user_id: userId, sender: 'user', message: userText, sentiment };
       const tempUserMsgId = Date.now().toString();
       setChatHistory(prev => [...prev, { ...userMsg, id: tempUserMsgId, created_at: new Date().toISOString() }]);
       setCompanionMood('thinking');
       setShowTypingIndicator(true);
 
-      if (supabase && user) {
+      if (supabase && userId !== 'guest') {
         supabase.from('chat_messages').insert(userMsg).then(({ data: saved }) => {
           if (saved) setChatHistory(prev => prev.map(m => m.id === tempUserMsgId ? saved : m));
         }).catch(err => console.log('Background save user msg error:', err));
       }
 
-      const aiReply = await generateSafetyAwareResponse(userText, chatHistory, 'normal');
+      const aiReply = await generateSafetyAwareResponse(userText, chatHistory, level);
 
       setShowTypingIndicator(false);
 
-      const aiMsg = { user_id: user.id, sender: 'assistant', message: aiReply, sentiment };
+      const aiMsg = { user_id: userId, sender: 'assistant', message: aiReply, sentiment };
       const tempAiMsgId = (Date.now() + 1).toString();
 
       setChatHistory(prev => [...prev, { ...aiMsg, id: tempAiMsgId, created_at: new Date().toISOString() }]);
       setLatestAiMessage(aiReply);
 
       // Background save AI message
-      supabase.from('chat_messages').insert(aiMsg).then(({ data: savedAi }) => {
-        if (savedAi) setChatHistory(prev => prev.map(m => m.id === tempAiMsgId ? savedAi : m));
-      }).catch(err => console.log('Background save AI msg error:', err));
+      if (supabase && userId !== 'guest') {
+        supabase.from('chat_messages').insert(aiMsg).then(({ data: savedAi }) => {
+          if (savedAi) setChatHistory(prev => prev.map(m => m.id === tempAiMsgId ? savedAi : m));
+        }).catch(err => console.log('Background save AI msg error:', err));
+      }
 
       // ── STEP 4: COMPANION emotion ──
       let mood = 'listening', gesture = 'idle';

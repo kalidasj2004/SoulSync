@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     padding: THEME.sizes.md,
-    paddingBottom: THEME.sizes.xl,
+    paddingBottom: 100,
   },
   userCard: {
     alignItems: 'center',

@@ -219,18 +219,20 @@ export default function AnalyticsScreen() {
                   <Text style={styles.chartTitle}>{translate('weeklyChart', language)}</Text>
                   <Text style={styles.chartSubtitle}>Emotional Index (5=😊, 1=😠)</Text>
                   
-                  <LineChart
-                    data={chartData.weekly}
-                    width={screenWidth}
-                    height={200}
-                    yAxisLabel=""
-                    yAxisSuffix=""
-                    fromZero={false}
-                    segments={4}
-                    chartConfig={chartConfig}
-                    bezier
-                    style={styles.chart}
-                  />
+                  <View pointerEvents="none">
+                    <LineChart
+                      data={chartData.weekly}
+                      width={screenWidth}
+                      height={200}
+                      yAxisLabel=""
+                      yAxisSuffix=""
+                      fromZero={false}
+                      segments={4}
+                      chartConfig={chartConfig}
+                      bezier
+                      style={styles.chart}
+                    />
+                  </View>
                 </Card>
               )}
 
@@ -240,18 +242,20 @@ export default function AnalyticsScreen() {
                   <Text style={styles.chartTitle}>{translate('monthlyChart', language)}</Text>
                   <Text style={styles.chartSubtitle}>Frequency distribution of logged moods</Text>
                   
-                  <BarChart
-                    data={chartData.monthly}
-                    width={screenWidth}
-                    height={200}
-                    chartConfig={{
-                      ...chartConfig,
-                      color: (opacity = 1) => `rgba(236, 72, 153, ${opacity})`, // Secondary pink
-                    }}
-                    style={styles.chart}
-                    fromZero
-                    showValuesOnTopOfBars
-                  />
+                  <View pointerEvents="none">
+                    <BarChart
+                      data={chartData.monthly}
+                      width={screenWidth}
+                      height={200}
+                      chartConfig={{
+                        ...chartConfig,
+                        color: (opacity = 1) => `rgba(236, 72, 153, ${opacity})`, // Secondary pink
+                      }}
+                      style={styles.chart}
+                      fromZero
+                      showValuesOnTopOfBars
+                    />
+                  </View>
                 </Card>
               )}
             </View>
@@ -274,7 +278,7 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     padding: THEME.sizes.md,
-    paddingBottom: THEME.sizes.xl,
+    paddingBottom: 100,
   },
   emptyCard: {
     padding: THEME.sizes.xl,

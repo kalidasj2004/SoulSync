@@ -121,7 +121,9 @@ export default function ProfileScreen() {
       <Header title={translate('profile', language)} />
       
       <ScrollView
+        style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContainer}
+        showsVerticalScrollIndicator={true}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={THEME.colors.primary} />
         }
@@ -196,11 +198,13 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    height: Platform.OS === 'web' ? '100vh' : '100%',
     backgroundColor: THEME.colors.background,
   },
   scrollContainer: {
     padding: THEME.sizes.md,
-    paddingBottom: 100,
+    paddingBottom: 160,
+    flexGrow: 1,
   },
   userCard: {
     alignItems: 'center',

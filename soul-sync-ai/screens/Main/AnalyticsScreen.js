@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, useCallback } from 'react';
-import { StyleSheet, Text, View, ScrollView, Dimensions, ActivityIndicator, RefreshControl } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, Dimensions, ActivityIndicator, RefreshControl, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { LineChart, BarChart } from 'react-native-chart-kit';
 import { getSupabase } from '../../services/supabase';
@@ -191,7 +191,9 @@ export default function AnalyticsScreen() {
         </View>
       ) : (
         <ScrollView
+          style={{ flex: 1 }}
           contentContainerStyle={styles.scrollContainer}
+          showsVerticalScrollIndicator={true}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={THEME.colors.primary} />
           }
@@ -269,6 +271,7 @@ export default function AnalyticsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    height: Platform.OS === 'web' ? '100vh' : '100%',
     backgroundColor: THEME.colors.background,
   },
   loadingContainer: {
@@ -278,7 +281,8 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     padding: THEME.sizes.md,
-    paddingBottom: 100,
+    paddingBottom: 160,
+    flexGrow: 1,
   },
   emptyCard: {
     padding: THEME.sizes.xl,

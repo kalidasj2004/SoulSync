@@ -28,10 +28,7 @@ copyRecursiveSync(webDir, distDir);
 const iconsDir = path.join(webDir, 'icons');
 if (fs.existsSync(iconsDir)) {
   fs.readdirSync(iconsDir).forEach((file) => {
-    const fullPath = path.join(iconsDir, file);
-    if (!fs.statSync(fullPath).isDirectory()) {
-      fs.copyFileSync(fullPath, path.join(distDir, file));
-    }
+    fs.copyFileSync(path.join(iconsDir, file), path.join(distDir, file));
   });
 }
 

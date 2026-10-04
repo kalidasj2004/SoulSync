@@ -137,27 +137,11 @@ export const CONCERNING_PHRASES = [
   'no way forward',
 ];
 
-export const normalizeSafetyText = (text) => {
-  if (!text) return '';
-  return text
-    .toLowerCase()
-    .replace(/[’‘`′]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/[^\w\s']/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-};
-
 export const isLifeThreateningMessage = (text) => {
   if (!text || text.trim().length === 0) return false;
-  const rawLower = text.toLowerCase().trim();
-  const normalized = normalizeSafetyText(text);
-
+  const t = text.toLowerCase().trim();
   for (const phrase of EMERGENCY_PHRASES) {
-    const normPhrase = normalizeSafetyText(phrase);
-    if (rawLower.includes(phrase) || normalized.includes(normPhrase) || (normPhrase.length > 3 && normalized.includes(normPhrase))) {
-      return true;
-    }
+    if (t.includes(phrase)) return true;
   }
   return false;
 };
@@ -165,23 +149,11 @@ export const isLifeThreateningMessage = (text) => {
 export const detectEmergency = (text) => {
   if (!text || text.trim().length === 0) return 'normal';
   if (isLifeThreateningMessage(text)) return 'emergency';
-  const rawLower = text.toLowerCase().trim();
-  const normalized = normalizeSafetyText(text);
-
+  const t = text.toLowerCase().trim();
   for (const phrase of CONCERNING_PHRASES) {
-    const normPhrase = normalizeSafetyText(phrase);
-    if (rawLower.includes(phrase) || normalized.includes(normPhrase)) {
-      return 'concerning';
-    }
+    if (t.includes(phrase)) return 'concerning';
   }
   return 'normal';
-};
-
-export const analyzeSafetyRisk = (text) => {
-  if (!text || !text.trim()) return 'NORMAL';
-  if (isLifeThreateningMessage(text)) return 'HIGH_RISK';
-  if (detectEmergency(text) === 'concerning') return 'CONCERNING';
-  return 'NORMAL';
 };
 
 /**

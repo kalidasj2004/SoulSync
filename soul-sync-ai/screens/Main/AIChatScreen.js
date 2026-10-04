@@ -318,50 +318,39 @@ export default function AIChatScreen() {
 
   /* ── Process user message (with Emergency Mode routing) ── */
   const processUserMessage = async (userText) => {
-    if (!userText || !userText.trim()) return;
+    if (!supabase || !userText.trim()) return;
     setLoading(true);
     setCompanionMood('listening');
     setCompanionGesture('idle');
     setShowTextInput(false);
 
     try {
-      // ── STEP 1: SAFETY / EMERGENCY DETECTION (instant, local, zero-network) ──
-      const risk = analyzeSafetyRisk ? analyzeSafetyRisk(userText) : 'NORMAL';
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const sentiment = analyzeSentiment(userText);
+
+      // ── STEP 1: SAFETY / EMERGENCY DETECTION (instant, local) ──
       const level = detectEmergency(userText); // 'normal' | 'concerning' | 'emergency'
-      const isLifeThreatening = isLifeThreateningMessage(userText) || risk === 'HIGH_RISK';
-      
+      const isLifeThreatening = isLifeThreateningMessage(userText);
       setEmergencyLevel(isLifeThreatening ? 'emergency' : level);
       setSafetyRiskLevel(isLifeThreatening ? 'high_risk' : level);
       setIsSafetyMode(level !== 'normal' || isLifeThreatening);
 
-      let userId = 'guest';
-      if (supabase) {
-        try {
-          const { data: { user: u } } = await supabase.auth.getUser();
-          if (u) userId = u.id;
-        } catch (e) {}
-      }
-
-      const sentiment = analyzeSentiment(userText);
-
-      // ── STEP 2: CRISIS / LIFE-THREATENING → HARD STOP (Gemini is NEVER called) ──
-      if (isLifeThreatening || level === 'emergency' || risk === 'HIGH_RISK') {
+      // ── STEP 2: CRISIS / CONCERNING / LIFE-THREATENING → HARD STOP (Gemini is NEVER called) ──
+      if (isLifeThreatening || level === 'emergency' || level === 'concerning') {
         setIsEmergencyMode(true);
 
-        const crisisUserMsg = { user_id: userId, sender: 'user', message: userText, sentiment };
+        const crisisUserMsg = { user_id: user.id, sender: 'user', message: userText, sentiment };
         const crisisUserMsgId = Date.now().toString();
         setChatHistory(prev => [...prev, { ...crisisUserMsg, id: crisisUserMsgId, created_at: new Date().toISOString() }]);
-        if (supabase && userId !== 'guest') {
-          supabase.from('chat_messages').insert(crisisUserMsg).catch(() => {});
-        }
+        supabase.from('chat_messages').insert(crisisUserMsg).catch(() => {});
 
-        const crisisAiMsg = { user_id: userId, sender: 'assistant', message: FIXED_CRISIS_RESPONSE, sentiment: 'sad' };
+        const crisisAiMsg = { user_id: user.id, sender: 'assistant', message: FIXED_CRISIS_RESPONSE, sentiment: 'sad' };
         const crisisAiMsgId = (Date.now() + 1).toString();
         setChatHistory(prev => [...prev, { ...crisisAiMsg, id: crisisAiMsgId, created_at: new Date().toISOString() }]);
         setLatestAiMessage(FIXED_CRISIS_RESPONSE);
-        if (supabase && userId !== 'guest') {
-          supabase.from('chat_messages').insert(crisisAiMsg).catch(() => {});
-        }
+        supabase.from('chat_messages').insert(crisisAiMsg).catch(() => {});
 
         setShowTypingIndicator(false);
         setCompanionMood('listening');
@@ -378,35 +367,31 @@ export default function AIChatScreen() {
         return; // ← HARD STOP. Gemini is NEVER reached for life-threatening messages.
       }
 
-      // ── STEP 3: NORMAL & CONCERNING → Call Gemini API ──
-      const userMsg = { user_id: userId, sender: 'user', message: userText, sentiment };
+      // ── STEP 3: NORMAL & CONCERNING → Call Gemini ──
+      const userMsg = { user_id: user.id, sender: 'user', message: userText, sentiment };
       const tempUserMsgId = Date.now().toString();
       setChatHistory(prev => [...prev, { ...userMsg, id: tempUserMsgId, created_at: new Date().toISOString() }]);
       setCompanionMood('thinking');
       setShowTypingIndicator(true);
 
-      if (supabase && userId !== 'guest') {
-        supabase.from('chat_messages').insert(userMsg).then(({ data: saved }) => {
-          if (saved) setChatHistory(prev => prev.map(m => m.id === tempUserMsgId ? saved : m));
-        }).catch(err => console.log('Background save user msg error:', err));
-      }
+      supabase.from('chat_messages').insert(userMsg).then(({ data: saved }) => {
+        if (saved) setChatHistory(prev => prev.map(m => m.id === tempUserMsgId ? saved : m));
+      }).catch(err => console.log('Background save user msg error:', err));
 
       const aiReply = await generateSafetyAwareResponse(userText, chatHistory, level);
 
       setShowTypingIndicator(false);
 
-      const aiMsg = { user_id: userId, sender: 'assistant', message: aiReply, sentiment };
+      const aiMsg = { user_id: user.id, sender: 'assistant', message: aiReply, sentiment };
       const tempAiMsgId = (Date.now() + 1).toString();
 
       setChatHistory(prev => [...prev, { ...aiMsg, id: tempAiMsgId, created_at: new Date().toISOString() }]);
       setLatestAiMessage(aiReply);
 
       // Background save AI message
-      if (supabase && userId !== 'guest') {
-        supabase.from('chat_messages').insert(aiMsg).then(({ data: savedAi }) => {
-          if (savedAi) setChatHistory(prev => prev.map(m => m.id === tempAiMsgId ? savedAi : m));
-        }).catch(err => console.log('Background save AI msg error:', err));
-      }
+      supabase.from('chat_messages').insert(aiMsg).then(({ data: savedAi }) => {
+        if (savedAi) setChatHistory(prev => prev.map(m => m.id === tempAiMsgId ? savedAi : m));
+      }).catch(err => console.log('Background save AI msg error:', err));
 
       // ── STEP 4: COMPANION emotion ──
       let mood = 'listening', gesture = 'idle';
